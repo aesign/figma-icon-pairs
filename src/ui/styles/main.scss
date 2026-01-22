@@ -1,19 +1,42 @@
-// 1. Configuration and helpers
-@forward "abstracts/variables";
+@font-face {
+  font-family: "Material Symbols Rounded";
+  src: url("../fonts/MaterialSymbolsRounded[FILL,GRAD,opsz,wght].ttf")
+    format("truetype");
+  font-weight: 100 700;
+  font-style: normal;
+  font-display: swap;
+}
 
-// 2. Vendors
-@forward "vendors/normalize";
+:root {
+  font-family: system-ui, -apple-system, "Inter", "Segoe UI", sans-serif;
+  color: var(--figma-color-text);
+  background-color: var(--figma-color-bg);
+}
 
-// 3. Base stuff
-@forward "base/base";
-@forward "base/fonts";
-@forward "base/typography";
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
 
-// 4. Layout-related sections
+body {
+  margin: 0;
+  background: var(--figma-color-bg);
+  color: var(--figma-color-text);
+  min-height: 100vh;
+}
 
-// 5. Components
+#root {
+  min-height: 100vh;
+}
 
-// 6. Page-specific styles
-@forward "pages/home";
+a {
+  color: inherit;
+  text-decoration: none;
+}
 
-// 7. Themes
+input,
+button,
+select {
+  font: inherit;
+}

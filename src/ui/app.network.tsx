@@ -21,6 +21,6 @@ UI_CHANNEL.registerMessageHandler("ping", () => {
   return "pong";
 });
 
-UI_CHANNEL.registerMessageHandler("hello", (text) => {
-  console.log("Plugin side said", text);
+UI_CHANNEL.registerMessageHandler("notify", (text) => {
+  console.log("Plugin says:", text);
 });

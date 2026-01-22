@@ -1,0 +1,30 @@
+.emptyWrapper {
+  padding: 10px;
+}
+
+.empty {
+  border: 1px dashed var(--figma-color-border);
+  border-radius: 10px;
+  padding: 16px;
+  background: var(--figma-color-bg-secondary);
+  color: var(--figma-color-text-secondary);
+  text-align: center;
+}
+
+.title {
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--figma-color-text);
+}
+
+.subtitle {
+  font-size: 12px;
+  margin: 0;
+  color: var(--figma-color-text-secondary);
+}
+
+.actions {
+  margin-top: 10px;
+  display: flex;
+  justify-content: center;
+}

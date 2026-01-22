@@ -1,0 +1,317 @@
+.app {
+  background: var(--figma-color-bg);
+  color: var(--figma-color-text);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-size: 12px;
+}
+
+button {
+  padding: 0;
+  box-shadow: none;
+  border: none;
+  margin: 0;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px;
+}
+
+.sectionTitle {
+  font-weight: 600;
+}
+
+.muted {
+  font-size: 12px;
+  color: var(--figma-color-text-secondary);
+}
+
+.sectionActions {
+  display: flex;
+  gap: 8px;
+}
+
+.selectorGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+  padding: 10px;
+}
+
+.banner {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px dashed var(--figma-color-border-strong, var(--figma-color-border));
+  background: var(--figma-color-bg-tertiary, var(--figma-color-bg-secondary));
+  color: var(--figma-color-text);
+}
+
+.status {
+  margin: 8px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: var(--figma-color-bg-selected, var(--figma-color-bg-secondary));
+  border: 1px solid var(--figma-color-border-strong, var(--figma-color-border));
+  color: var(--figma-color-text);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  align-items: start;
+}
+
+@media (max-width: 1100px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.empty {
+  padding: 12px;
+  color: var(--figma-color-text-secondary);
+}
+
+.pairList {
+  display: flex;
+  flex-direction: column;
+}
+
+.pairCard {
+  border-bottom: 1px solid var(--figma-color-border);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  color: var(--figma-color-text);
+}
+
+.pairGlyphs {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+}
+
+.pairGlyph {
+  border: 1px solid var(--figma-color-border);
+  width: 100%;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 2px;
+}
+
+.glyphLabel {
+  font-size: 11px;
+  color: var(--figma-color-text-secondary);
+  text-transform: uppercase;
+}
+
+.sfGlyph,
+.materialGlyph {
+  font-size: 24px;
+  line-height: 1.1;
+  margin: 4px 0;
+  color: var(--figma-color-icon, var(--figma-color-text));
+}
+
+.sfGlyph {
+  font-family: system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif;
+}
+
+.materialGlyph {
+  font-family: "Material Symbols Rounded";
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 32;
+}
+
+.pairName {
+  font-weight: 600;
+}
+
+.metaGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 8px;
+}
+
+.metaLabel {
+  font-size: 11px;
+  color: var(--figma-color-text-secondary);
+}
+
+.metaValue {
+  font-size: 12px;
+}
+
+.cardActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  padding: 0px 12px 12px 12px;
+}
+
+.resultsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  flex: 1;
+  min-height: 0;
+}
+
+.resultsColumn {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 360px;
+  padding: 0;
+}
+
+.resultsHeader {
+  padding: 6px 0px;
+  display: flex;
+  width: 100%;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--figma-color-text-secondary);
+  background-color: var(--figma-color-bg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.counter {
+  color: var(--figma-color-text-tertiary);
+}
+
+.resultList {
+  display: flex;
+  flex-direction: column;
+  overflow: auto;
+  flex: 1;
+  min-height: 240px;
+  margin-top: 4px;
+}
+
+.resultListSf {
+  margin-left: 4px;
+}
+
+.resultListMaterial {
+  margin-right: 4px;
+}
+
+.resultListEmpty {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+}
+
+.resultsGridEmpty {
+  grid-column: 1 / -1;
+}
+
+.summaryRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  border-top: 1px solid var(--figma-color-border);
+  padding: 10px 16px;
+  position: sticky;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  background: var(--figma-color-bg);
+  z-index: 5;
+  margin-top: auto;
+}
+
+.summaryChips {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  border-bottom: 1px solid var(--figma-color-border);
+  position: sticky;
+  top: 57px;
+  z-index: 15;
+  background-color: var(--figma-color-bg);
+  padding: 4px 10px;
+}
+
+.chip {
+  padding: 6px 8px;
+  border-radius: 999px;
+  border: 1px dashed var(--figma-color-border);
+  background: var(--figma-color-bg);
+  color: var(--figma-color-text-tertiary, var(--figma-color-text-secondary));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  max-height: 28px;
+}
+
+.chipSelected {
+  border: 1px solid var(--figma-color-border-strong, var(--figma-color-border));
+  background: var(--figma-color-bg-secondary);
+  color: var(--figma-color-text);
+}
+
+.chipGlyphSf {
+  font-family: system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif;
+  font-size: 14px;
+}
+
+.chipGlyphMaterial {
+  font-family: "Material Symbols Rounded";
+  font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24;
+  font-size: 20px;
+}
+
+.chipText {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-family: system-ui, -apple-system, "SF Pro Text", "Inter", sans-serif;
+  font-size: 12px;
+}
+
+.pairsHeader {
+  position: sticky;
+  top: 57px;
+  padding: 6px 0px;
+  display: flex;
+  width: 100%;
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--figma-color-text-secondary);
+  background-color: var(--figma-color-bg);
+  border-bottom: 1px solid var(--figma-color-border);
+  z-index: 10;
+}
+
+.pairHeader {
+  padding: 0px 10px;
+  width: 100%;
+  text-align: center;
+}

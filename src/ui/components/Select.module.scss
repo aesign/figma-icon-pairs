@@ -1,0 +1,28 @@
+.select {
+  width: 100%;
+  padding: 8px 14px 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--figma-color-border, transparent);
+  background: var(--figma-color-bg-secondary);
+  color: var(--figma-color-text);
+  font: inherit;
+  appearance: auto;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
+
+  &:focus {
+    outline: none;
+    border-color: var(
+      --figma-color-border-strong,
+      var(--figma-color-border)
+    );
+    box-shadow: 0 0 0 1px
+      var(--figma-color-border-strong, var(--figma-color-border));
+  }
+
+  &:disabled {
+    background: var(--figma-color-bg-disabled);
+    color: var(--figma-color-text-disabled);
+    border-color: var(--figma-color-border-disabled, var(--figma-color-border));
+    cursor: not-allowed;
+  }
+}
