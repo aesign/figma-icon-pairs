@@ -162,6 +162,16 @@ PLUGIN_CHANNEL.registerMessageHandler("ping", () => {
   return "pong";
 });
 
+PLUGIN_CHANNEL.registerMessageHandler("getEnvironment", () => {
+  const isDevMode =
+    figma.editorType === "dev" ||
+    (figma as any).mode === "dev" ||
+    (figma as any).mode === "code" ||
+    (figma as any).isInDevMode === true ||
+    (figma as any).devMode === true;
+  return { isDevMode };
+});
+
 PLUGIN_CHANNEL.registerMessageHandler("getCollections", async () => {
   return listCollections();
 });

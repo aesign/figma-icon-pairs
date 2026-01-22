@@ -9,6 +9,10 @@ import {
 } from "@common/types";
 import { UI_CHANNEL } from "@ui/app.network";
 
+export async function fetchEnvironment(): Promise<{ isDevMode: boolean }> {
+  return UI_CHANNEL.request(PLUGIN, "getEnvironment", []);
+}
+
 export async function fetchCollections(): Promise<VariableCollectionInfo[]> {
   return UI_CHANNEL.request(PLUGIN, "getCollections", []);
 }

@@ -15,6 +15,7 @@ import { CreatePage } from "@ui/pages/CreatePage";
 import { HomePage } from "@ui/pages/HomePage";
 import { SettingsPage } from "@ui/pages/SettingsPage";
 import {
+  fetchEnvironment,
   createPair as createPairApi,
   deletePair as deletePairApi,
   updatePair as updatePairApi,
@@ -138,6 +139,7 @@ function App() {
   const [editingPair, setEditingPair] = useState<VariablePair | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [collections, setCollections] = useState<VariableCollectionInfo[]>([]);
+  const [isDevMode, setIsDevMode] = useState(false);
 
   useEffect(() => {
     if (mappingError) setStatus(mappingError);
@@ -149,14 +151,24 @@ function App() {
 
   useEffect(() => {
     if (mappingLoaded && !mappingComplete) {
-      setActivePage("settings");
+      if (!isDevMode) {
+        setActivePage("settings");
+      }
     }
-  }, [mappingLoaded, mappingComplete]);
+  }, [mappingLoaded, mappingComplete, isDevMode]);
+
+  useEffect(() => {
+    if (isDevMode) {
+      setActivePage("home");
+    }
+  }, [isDevMode]);
 
   useEffect(() => {
     const loadCollections = async () => {
       try {
         const { fetchCollections } = await import("@ui/services/pluginApi");
+        const env = await fetchEnvironment();
+        setIsDevMode(env.isDevMode);
         const result = await fetchCollections();
         setCollections(result);
       } catch (err) {
@@ -267,6 +279,7 @@ function App() {
   };
 
   const startEdit = (pair: VariablePair) => {
+    if (isDevMode) return;
     const sf = deriveSfFromPair(pair, sfSymbols);
     const material = deriveMaterialFromPair(pair, materialIcons);
     setSelectedSf(sf);
@@ -287,6 +300,7 @@ function App() {
   };
 
   const handleDelete = async (pair: VariablePair) => {
+    if (isDevMode) return;
     const confirmed = confirm(
       `Delete the pair "${pair.name}"? This action cannot be undone.`
     );
@@ -356,7 +370,7 @@ function App() {
     <div className={styles.app}>
       {status ? <div className={styles.status}>{status}</div> : null}
 
-      {activePage === "settings" && (
+      {activePage === "settings" && !isDevMode && (
         <SettingsPage
           collections={collections}
           collectionId={mapping.collectionId}
@@ -381,20 +395,31 @@ function App() {
             pairs={filteredPairs}
             loading={pairsLoading}
             mappingComplete={mappingComplete}
+            isDevMode={isDevMode}
             onSearch={setPairSearch}
             searchValue={pairSearch}
-            onEdit={startEdit}
-            onDelete={handleDelete}
+            onEdit={(pair) => {
+              if (isDevMode) return;
+              startEdit(pair);
+            }}
+            onDelete={(pair) => {
+              if (isDevMode) return;
+              handleDelete(pair);
+            }}
             onCreate={(initialSearch) => {
+              if (isDevMode) return;
               setSearchQuery(initialSearch ?? "");
               setActivePage("create");
             }}
-            onOpenSettings={() => setActivePage("settings")}
+            onOpenSettings={() => {
+              if (isDevMode) return;
+              setActivePage("settings");
+            }}
           />
         </div>
       )}
 
-      {activePage === "create" && (
+      {activePage === "create" && !isDevMode && (
         <CreatePage
           mappingComplete={mappingComplete}
           hasEnoughModes={hasEnoughModes}

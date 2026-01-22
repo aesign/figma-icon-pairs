@@ -7,9 +7,15 @@ type Props = {
   pair: VariablePair;
   onEdit: (pair: VariablePair) => void;
   onDelete: (pair: VariablePair) => void;
+  showActions?: boolean;
 };
 
-export function PairCard({ pair, onEdit, onDelete }: Props) {
+export function PairCard({
+  pair,
+  onEdit,
+  onDelete,
+  showActions = true,
+}: Props) {
   const meta = pair.descriptionFields;
   const sfName = meta?.sfName || "Unknown SF name";
 
@@ -57,10 +63,12 @@ export function PairCard({ pair, onEdit, onDelete }: Props) {
           </div>
         </div>
       </div> */}
-      <div className={styles.cardActions}>
-        <Button variant="secondary" onClick={() => onEdit(pair)} icon="edit" />
-        <Button variant="danger" onClick={() => onDelete(pair)} icon="delete" />
-      </div>
+      {showActions ? (
+        <div className={styles.cardActions}>
+          <Button variant="secondary" onClick={() => onEdit(pair)} icon="edit" />
+          <Button variant="danger" onClick={() => onDelete(pair)} icon="delete" />
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -11,6 +11,7 @@ type Props = {
   pairs: VariablePair[];
   loading: boolean;
   mappingComplete: boolean;
+  isDevMode: boolean;
   onSearch: (value: string) => void;
   searchValue: string;
   onEdit: (pair: VariablePair) => void;
@@ -23,6 +24,7 @@ export function HomePage({
   pairs,
   loading,
   mappingComplete,
+  isDevMode,
   onSearch,
   searchValue,
   onEdit,
@@ -42,15 +44,21 @@ export function HomePage({
       <SectionHeader
         // title="Pairs"
         actions={
-          <>
-            <Button
-              variant="primary"
-              onClick={() => onCreate(searchValue)}
-              disabled={!mappingComplete}
-              icon="add"
-            />
-            <Button variant="secondary" onClick={onOpenSettings} icon="settings" />
-          </>
+          !isDevMode ? (
+            <>
+              <Button
+                variant="primary"
+                onClick={() => onCreate(searchValue)}
+                disabled={!mappingComplete}
+                icon="add"
+              />
+              <Button
+                variant="secondary"
+                onClick={onOpenSettings}
+                icon="settings"
+              />
+            </>
+          ) : null
         }
       >
         <Input
@@ -65,8 +73,16 @@ export function HomePage({
         <div className={styles.empty}>Loading pairs…</div>
       ) : !mappingComplete ? (
         <EmptyState
-          title="Select collection and modes"
-          subtitle="Open Settings to pick a collection and two modes to sync pairs."
+          title={
+            isDevMode
+              ? "Settings hidden in Dev Mode"
+              : "Select collection and modes"
+          }
+          subtitle={
+            isDevMode
+              ? "Open the plugin in Design mode to configure collection and modes."
+              : "Open Settings to pick a collection and two modes to sync pairs."
+          }
         />
       ) : pairs.length === 0 ? (
         <EmptyState
@@ -78,17 +94,21 @@ export function HomePage({
           subtitle={
             searchValue.trim()
               ? "Try another keyword."
+              : isDevMode
+              ? "Switch to Design mode to create pairs."
               : "Create a pair to get started."
           }
         >
-          <Button
-            variant="primary"
-            icon="add"
-            onClick={() => onCreate(searchValue)}
-            disabled={!mappingComplete}
-          >
-            Add pair
-          </Button>
+          {!isDevMode ? (
+            <Button
+              variant="primary"
+              icon="add"
+              onClick={() => onCreate(searchValue)}
+              disabled={!mappingComplete}
+            >
+              Add pair
+            </Button>
+          ) : null}
         </EmptyState>
       ) : (
         <>
@@ -103,6 +123,7 @@ export function HomePage({
                 pair={pair}
                 onEdit={onEdit}
                 onDelete={onDelete}
+                showActions={!isDevMode}
               />
             ))}
           </div>
