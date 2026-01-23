@@ -16,6 +16,9 @@ import { HomePage } from "@ui/pages/HomePage";
 import { SettingsPage } from "@ui/pages/SettingsPage";
 import {
   fetchEnvironment,
+  fetchCollections,
+  fetchSelectionPairs,
+  clearSelection as clearSelectionApi,
   createPair as createPairApi,
   deletePair as deletePairApi,
   updatePair as updatePairApi,
@@ -114,6 +117,20 @@ function App() {
 
   const { mapping, setMapping, mappingComplete, mappingLoaded, error: mappingError } =
     useMappingState();
+  const [activePage, setActivePage] = useState<Page>("home");
+  const [status, setStatus] = useState<string | null>(null);
+  const [selectedSf, setSelectedSf] = useState<SfSymbol | null>(null);
+  const [selectedMaterial, setSelectedMaterial] =
+    useState<MaterialIcon | null>(null);
+  const [editingPair, setEditingPair] = useState<VariablePair | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [collections, setCollections] = useState<VariableCollectionInfo[]>([]);
+  const [isDevMode, setIsDevMode] = useState(false);
+  const [selectionPairIds, setSelectionPairIds] = useState<string[] | null>(
+    null
+  );
+  const [selectionFilterActive, setSelectionFilterActive] = useState(false);
+
   const {
     pairs,
     visiblePairs,
@@ -130,16 +147,6 @@ function App() {
     materialModeId: mapping.materialModeId,
     mappingComplete,
   });
-
-  const [activePage, setActivePage] = useState<Page>("home");
-  const [status, setStatus] = useState<string | null>(null);
-  const [selectedSf, setSelectedSf] = useState<SfSymbol | null>(null);
-  const [selectedMaterial, setSelectedMaterial] =
-    useState<MaterialIcon | null>(null);
-  const [editingPair, setEditingPair] = useState<VariablePair | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [collections, setCollections] = useState<VariableCollectionInfo[]>([]);
-  const [isDevMode, setIsDevMode] = useState(false);
 
   useEffect(() => {
     if (mappingError) setStatus(mappingError);
@@ -164,13 +171,43 @@ function App() {
   }, [isDevMode]);
 
   useEffect(() => {
+    const listener = (event: MessageEvent) => {
+      const message = (event.data as any)?.pluginMessage;
+      if (message?.type === "selectionPairs") {
+        console.log(
+          "[icon-pairs][ui] selectionPairs",
+          message.selectionCount,
+          message.pairIds
+        );
+        const ids = Array.isArray(message.pairIds)
+          ? message.pairIds.filter((id: any) => typeof id === "string")
+          : [];
+        setSelectionPairIds(ids);
+        setSelectionFilterActive(
+          typeof message.selectionCount === "number"
+            ? message.selectionCount > 0
+            : ids.length > 0
+        );
+      }
+    };
+    window.addEventListener("message", listener);
+    return () => window.removeEventListener("message", listener);
+  }, []);
+
+  useEffect(() => {
     const loadCollections = async () => {
       try {
-        const { fetchCollections } = await import("@ui/services/pluginApi");
         const env = await fetchEnvironment();
+        const localResult = await fetchCollections();
+        setCollections(localResult);
         setIsDevMode(env.isDevMode);
-        const result = await fetchCollections();
-        setCollections(result);
+        try {
+          const selectionInfo = await fetchSelectionPairs();
+          setSelectionPairIds(selectionInfo.pairIds);
+          setSelectionFilterActive(selectionInfo.selectionCount > 0);
+        } catch (err) {
+          console.warn("Unable to load selection pairs", err);
+        }
       } catch (err) {
         setStatus(formatError(err));
       }
@@ -178,12 +215,36 @@ function App() {
     loadCollections();
   }, []);
 
+  useEffect(() => {
+    const exists = mapping.collectionId
+      ? collections.some((c) => c.id === mapping.collectionId)
+      : false;
+    if (!exists && collections.length > 0) {
+      setMapping({
+        collectionId: collections[0].id,
+        groupId: null,
+        sfModeId: collections[0].defaultModeId ?? null,
+        materialModeId: null,
+      });
+    }
+  }, [collections, mapping.collectionId, setMapping]);
+
   const selectedCollection = useMemo(
-    () => collections.find((c) => c.id === mapping.collectionId) ?? null,
+    () =>
+      collections.find((c) => c.id === mapping.collectionId) ?? null,
     [collections, mapping.collectionId]
   );
-  const hasEnoughModes = (selectedCollection?.modes.length ?? 0) >= 2;
+  const hasEnoughModes = (selectedCollection?.modes?.length ?? 0) >= 2;
   const selectionLocked = Boolean(editingPair);
+  const availableCollections = useMemo(
+    () =>
+      collections.map((c) => ({
+        ...c,
+        modes: c.modes ?? [],
+        groups: c.groups ?? [],
+      })),
+    [collections]
+  );
 
   const onChangeMapping = (state: {
     collectionId?: string | null;
@@ -207,6 +268,16 @@ function App() {
       return;
     }
     setMapping(updated);
+  };
+
+  const clearSelectionFilter = async () => {
+    try {
+      await clearSelectionApi();
+    } catch (err) {
+      console.warn("Unable to clear selection", err);
+    }
+    setSelectionPairIds(null);
+    setSelectionFilterActive(false);
   };
 
   const materialIndex = useMemo(
@@ -264,6 +335,15 @@ function App() {
     });
     return map;
   }, [visiblePairs]);
+
+  const selectionFilteredPairs = useMemo(() => {
+    if (!selectionFilterActive) return filteredPairs;
+    if (!selectionPairIds || selectionPairIds.length === 0) return [];
+    const idSet = new Set(selectionPairIds);
+    // When filtering by selection, ignore the text search to surface matches found in the document.
+    const source = visiblePairs;
+    return source.filter((pair) => idSet.has(pair.id));
+  }, [selectionFilterActive, selectionPairIds, filteredPairs, visiblePairs]);
 
   const resetMapping = () => {
     setPairSearch("");
@@ -372,7 +452,7 @@ function App() {
 
       {activePage === "settings" && !isDevMode && (
         <SettingsPage
-          collections={collections}
+          collections={availableCollections}
           collectionId={mapping.collectionId}
           groupId={mapping.groupId}
           sfModeId={mapping.sfModeId}
@@ -392,9 +472,10 @@ function App() {
       {activePage === "home" && (
         <div className={styles.grid}>
           <HomePage
-            pairs={filteredPairs}
+            pairs={selectionFilteredPairs}
             loading={pairsLoading}
             mappingComplete={mappingComplete}
+            selectionActive={selectionFilterActive}
             isDevMode={isDevMode}
             onSearch={setPairSearch}
             searchValue={pairSearch}
@@ -415,6 +496,7 @@ function App() {
               if (isDevMode) return;
               setActivePage("settings");
             }}
+            onClearSelection={clearSelectionFilter}
           />
         </div>
       )}

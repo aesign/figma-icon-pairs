@@ -13,6 +13,14 @@ import {
 const GROUP_PLUGIN_DATA_KEY = "variableGroupId";
 const MAPPING_STATE_KEY = "mappingState";
 
+const log = (...args: any[]) => {
+  try {
+    console.log("[icon-pairs][plugin]", ...args);
+  } catch {
+    // ignore logging errors
+  }
+};
+
 export const PLUGIN_CHANNEL = PLUGIN.channelBuilder()
   .emitsTo(UI, (message) => {
     figma.ui.postMessage(message);
@@ -159,24 +167,180 @@ async function ensureCollection(collectionId: string): Promise<VariableCollectio
 // ---------- Message handlers
 
 PLUGIN_CHANNEL.registerMessageHandler("ping", () => {
+  log("ping");
   return "pong";
 });
 
-PLUGIN_CHANNEL.registerMessageHandler("getEnvironment", () => {
+PLUGIN_CHANNEL.registerMessageHandler("getEnvironment", async () => {
   const isDevMode =
     figma.editorType === "dev" ||
     (figma as any).mode === "dev" ||
     (figma as any).mode === "code" ||
     (figma as any).isInDevMode === true ||
     (figma as any).devMode === true;
-  return { isDevMode };
+  const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+  const isLibraryFile = localCollections.length > 0;
+  log("getEnvironment", { editorType: figma.editorType, isDevMode });
+  return { isDevMode, isLibraryFile };
+});
+
+function extractIds(binding: any): string[] {
+  log("extractIds:raw", binding);
+  if (!binding) return [];
+  if (typeof binding === "string") {
+    if (binding.startsWith("VariableID:") || binding.startsWith("VariableCollectionId:")) {
+      return [binding];
+    }
+    log("extractIds:string_ignored", binding);
+    return [];
+  }
+  if (Array.isArray(binding)) {
+    const results = binding.flatMap((item) => extractIds(item));
+    log("extractIds:array", results);
+    return results;
+  }
+  if (typeof binding === "object" && binding !== null) {
+    if (typeof binding.id === "string") {
+      log("extractIds:object.id", binding.id);
+      return [binding.id];
+    }
+    if (typeof (binding as any).variableId === "string") {
+      log("extractIds:object.variableId", (binding as any).variableId);
+      return [(binding as any).variableId];
+    }
+    if (typeof (binding as any).value === "string") {
+      log("extractIds:object.value", (binding as any).value);
+      return [(binding as any).value];
+    }
+    log("extractIds:object.unhandledKeys", Object.keys(binding));
+  }
+  return [];
+}
+
+function collectSelectionInfo(): { pairIds: string[]; selectionCount: number } {
+  const ids = new Set<string>();
+
+  const visit = (node: SceneNode) => {
+    log("visit:node", { type: node.type, name: (node as any).name });
+    if ("children" in node) {
+      for (const child of node.children) {
+        visit(child);
+      }
+    }
+
+    if (node.type === "TEXT") {
+      const bound = (node as any).boundVariables;
+      log("text", node);
+      log("text:boundVariables", bound);
+      const characters = bound?.characters;
+      const varIds = extractIds(characters);
+      log("text:charactersVarIds", varIds);
+      varIds.forEach((id) => ids.add(id));
+    }
+
+    if ("componentProperties" in node) {
+     log("instanceNode", node);
+      const props =
+        ((node as any).componentProperties as Record<
+          string,
+          { type?: string; value?: any }
+        >) ?? {};
+      const boundProps =
+        ((node as any).boundVariables?.componentProperties as Record<
+          string,
+          any
+        >) ?? {};
+      const propRefs =
+        ((node as any).componentPropertyReferences as Record<string, any>) ??
+        {};
+
+      Object.entries(props).forEach(([propName, prop]) => {
+        const bound = boundProps[propName];
+        const ref = propRefs[propName];
+        const inlineBound =
+          (prop as any)?.boundVariables?.value ??
+          (prop as any)?.boundVariables ??
+          undefined;
+        log("instance:componentProperty", {
+          node: (node as any).name,
+          name: propName,
+          type: prop?.type,
+          value: prop?.value,
+          bound,
+          ref,
+          inlineBound,
+        });
+
+        const isTextProp =
+          prop?.type === "TEXT" || prop?.type === "STRING" || prop?.type === "TEXT_LITERAL";
+
+        if (isTextProp) {
+          const fromBound = extractIds(bound);
+          const fromValue = extractIds(prop?.value);
+          const fromRef = extractIds(ref);
+          const fromInline = extractIds(inlineBound);
+          const all = [...fromBound, ...fromValue, ...fromRef, ...fromInline];
+          log("instance:componentPropertyVarIds", {
+            name: propName,
+            ids: all,
+          });
+          all.forEach((id) => ids.add(id));
+        }
+      });
+    }
+  };
+
+  for (const node of figma.currentPage.selection) {
+    visit(node);
+  }
+
+  return { pairIds: Array.from(ids), selectionCount: figma.currentPage.selection.length };
+}
+
+function notifySelectionPairs() {
+  const info = collectSelectionInfo();
+  log(
+    "selectionchange",
+    `nodes=${info.selectionCount}`,
+    `pairIds=${info.pairIds.join(",") || "none"}`
+  );
+  try {
+    figma.ui.postMessage({ type: "selectionPairs", ...info });
+  } catch (err) {
+    console.warn("Failed to post selection pairs", err);
+  }
+}
+
+export function startSelectionWatcher() {
+  figma.on("selectionchange", notifySelectionPairs);
+  notifySelectionPairs();
+}
+
+PLUGIN_CHANNEL.registerMessageHandler("getSelectionPairs", async () => {
+  return collectSelectionInfo();
+});
+
+PLUGIN_CHANNEL.registerMessageHandler("clearSelection", async () => {
+  figma.currentPage.selection = [];
+  notifySelectionPairs();
+});
+
+PLUGIN_CHANNEL.registerMessageHandler("notify", async (message: string) => {
+  log("notify", message);
+  try {
+    figma.notify(message, { timeout: 2000 });
+  } catch (err) {
+    console.warn("Failed to notify", err);
+  }
 });
 
 PLUGIN_CHANNEL.registerMessageHandler("getCollections", async () => {
+  log("getCollections");
   return listCollections();
 });
 
 PLUGIN_CHANNEL.registerMessageHandler("loadMappingState", async () => {
+  log("loadMappingState");
   const state = await figma.clientStorage.getAsync(MAPPING_STATE_KEY);
   if (!state) {
     return {
@@ -192,6 +356,7 @@ PLUGIN_CHANNEL.registerMessageHandler("loadMappingState", async () => {
 PLUGIN_CHANNEL.registerMessageHandler(
   "saveMappingState",
   async (state: MappingState) => {
+    log("saveMappingState", state);
     await figma.clientStorage.setAsync(MAPPING_STATE_KEY, state);
   }
 );
@@ -199,6 +364,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
 PLUGIN_CHANNEL.registerMessageHandler(
   "loadPairs",
   async (payload: LoadPairsRequest) => {
+    log("loadPairs", payload);
     const collection = await ensureCollection(payload.collectionId);
     ensureModes(collection, payload.sfModeId, payload.materialModeId);
 
@@ -220,7 +386,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
 PLUGIN_CHANNEL.registerMessageHandler(
   "createPair",
   async (payload: CreatePairRequest) => {
-    console.log("createPair payload", payload);
+    log("createPair", payload);
     if (figma.editorType !== "figma") {
       throw new Error("Variables are only supported in Figma files.");
     }
@@ -232,14 +398,14 @@ PLUGIN_CHANNEL.registerMessageHandler(
       collection,
       "STRING"
     );
-    console.log("createPair variable created", variable.id);
+    log("createPair variable created", variable.id);
     applyVariableGroup(variable, payload.groupId ?? null);
     variable.scopes = ["TEXT_CONTENT"];
     variable.setValueForMode(payload.sfModeId, payload.sf.symbol);
     variable.setValueForMode(payload.materialModeId, payload.material.name);
     variable.description = buildPairDescription(payload.sf, payload.material);
 
-    console.log("createPair variable configured", {
+    log("createPair variable configured", {
       id: variable.id,
       name: variable.name,
     });
@@ -250,6 +416,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
 PLUGIN_CHANNEL.registerMessageHandler(
   "updatePair",
   async (payload: UpdatePairRequest) => {
+    log("updatePair", payload);
     const variable = await figma.variables.getVariableByIdAsync(
       payload.variableId
     );
@@ -281,6 +448,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
 );
 
 PLUGIN_CHANNEL.registerMessageHandler("deletePair", async (variableId) => {
+  log("deletePair", { variableId });
   const variable = await figma.variables.getVariableByIdAsync(variableId);
   if (!variable) return;
   variable.remove();

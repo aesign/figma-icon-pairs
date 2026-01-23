@@ -8,4 +8,5 @@ export default {
   capabilities: ["inspect"],
   enableProposedApi: false,
   editorType: ["figma", "figjam", "dev"],
+  permissions: ["teamlibrary"]
 };

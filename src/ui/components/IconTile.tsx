@@ -11,6 +11,9 @@ type Props = {
   className?: string;
   interactive?: boolean;
   style?: React.CSSProperties;
+  onGlyphClick?: () => void;
+  onNameClick?: () => void;
+  materialFill?: boolean;
 };
 
 export function IconTile({
@@ -23,6 +26,9 @@ export function IconTile({
   interactive,
   className,
   style,
+  onGlyphClick,
+  onNameClick,
+  materialFill = false,
 }: Props) {
   return (
     <div
@@ -38,12 +44,28 @@ export function IconTile({
       <div
         className={classes(
           styles.glyph,
-          tone === "material" ? styles.materialGlyph : styles.sfGlyph
+          tone === "material"
+            ? classes(
+                styles.materialGlyph,
+                materialFill && styles.materialGlyphFill
+              )
+            : styles.sfGlyph,
+          onGlyphClick && styles.clickable
         )}
+        onClick={onGlyphClick}
+        role={onGlyphClick ? "button" : undefined}
+        tabIndex={onGlyphClick ? 0 : undefined}
       >
         {glyph}
       </div>
-      <div className={styles.name}>{name}</div>
+      <div
+        className={classes(styles.name, onNameClick && styles.clickable)}
+        onClick={onNameClick}
+        role={onNameClick ? "button" : undefined}
+        tabIndex={onNameClick ? 0 : undefined}
+      >
+        {name}
+      </div>
       {badge ? <div className={styles.badge}>{badge}</div> : null}
     </div>
   );

@@ -9,8 +9,23 @@ import {
 } from "@common/types";
 import { UI_CHANNEL } from "@ui/app.network";
 
-export async function fetchEnvironment(): Promise<{ isDevMode: boolean }> {
+export async function fetchEnvironment(): Promise<{ isDevMode: boolean; isLibraryFile?: boolean }> {
   return UI_CHANNEL.request(PLUGIN, "getEnvironment", []);
+}
+
+export async function fetchSelectionPairs(): Promise<{
+  pairIds: string[];
+  selectionCount: number;
+}> {
+  return UI_CHANNEL.request(PLUGIN, "getSelectionPairs", []);
+}
+
+export async function clearSelection(): Promise<void> {
+  await UI_CHANNEL.request(PLUGIN, "clearSelection", []);
+}
+
+export async function notify(message: string): Promise<void> {
+  await UI_CHANNEL.request(PLUGIN, "notify", [message]);
 }
 
 export async function fetchCollections(): Promise<VariableCollectionInfo[]> {

@@ -29,6 +29,10 @@
   font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 32;
 }
 
+.materialGlyphFill {
+  font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 32;
+}
+
 .name {
   font-size: 12px;
   text-overflow: ellipsis;
@@ -36,6 +40,10 @@
   white-space: nowrap;
   overflow: hidden;
   width: 100%;
+}
+
+.clickable {
+  cursor: pointer;
 }
 
 .badge {

@@ -1,5 +1,5 @@
 import { PLUGIN, UI } from "@common/networkSides";
-import { PLUGIN_CHANNEL } from "@plugin/plugin.network";
+import { PLUGIN_CHANNEL, startSelectionWatcher } from "@plugin/plugin.network";
 import { Networker } from "monorepo-networker";
 
 async function bootstrap() {
@@ -10,6 +10,8 @@ async function bootstrap() {
     height: 660,
     themeColors: true,
   });
+
+  startSelectionWatcher();
 
   console.log("Bootstrapped @", Networker.getCurrentSide().name);
 }

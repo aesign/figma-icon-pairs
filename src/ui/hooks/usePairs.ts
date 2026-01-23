@@ -58,13 +58,12 @@ export function usePairs({
     }
     setLoading(true);
     try {
-      const payload = {
+      const loaded = await fetchPairs({
         collectionId,
         groupId: groupId ?? null,
         sfModeId,
         materialModeId,
-      };
-      const loaded = await fetchPairs(payload);
+      });
       setPairs(loaded);
       setError(null);
     } catch (err) {

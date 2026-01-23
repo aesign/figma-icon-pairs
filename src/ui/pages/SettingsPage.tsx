@@ -57,7 +57,9 @@ export function SettingsPage({
       />
       <div className={styles.selectorGrid}>
         <div>
-          <div className={styles.label}>Collection</div>
+          <div className={styles.label}>
+            Collection
+          </div>
           <Select
             value={collectionId ?? ""}
             onChange={(event) => {

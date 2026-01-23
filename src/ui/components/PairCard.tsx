@@ -8,6 +8,11 @@ type Props = {
   onEdit: (pair: VariablePair) => void;
   onDelete: (pair: VariablePair) => void;
   showActions?: boolean;
+  onSfGlyphClick?: (pair: VariablePair) => void;
+  onSfNameClick?: (pair: VariablePair) => void;
+  onMaterialGlyphClick?: (pair: VariablePair) => void;
+  onMaterialNameClick?: (pair: VariablePair) => void;
+  materialFill?: boolean;
 };
 
 export function PairCard({
@@ -15,6 +20,11 @@ export function PairCard({
   onEdit,
   onDelete,
   showActions = true,
+  onSfGlyphClick,
+  onSfNameClick,
+  onMaterialGlyphClick,
+  onMaterialNameClick,
+  materialFill = false,
 }: Props) {
   const meta = pair.descriptionFields;
   const sfName = meta?.sfName || "Unknown SF name";
@@ -28,11 +38,20 @@ export function PairCard({
           tone="sf"
           className={styles.divided}
           style={{ borderRight: "1px solid var(--figma-color-border)" }}
+          onGlyphClick={onSfGlyphClick ? () => onSfGlyphClick(pair) : undefined}
+          onNameClick={onSfNameClick ? () => onSfNameClick(pair) : undefined}
         />
         <IconTile
           glyph={meta?.materialName || pair.materialValue || ""}
           name={meta?.materialName || pair.materialValue || ""}
           tone="material"
+          materialFill={materialFill}
+          onGlyphClick={
+            onMaterialGlyphClick ? () => onMaterialGlyphClick(pair) : undefined
+          }
+          onNameClick={
+            onMaterialNameClick ? () => onMaterialNameClick(pair) : undefined
+          }
         />
       </div>
       {/* <div className={styles.metaGrid}>
