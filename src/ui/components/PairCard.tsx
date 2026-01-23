@@ -12,7 +12,6 @@ type Props = {
   onSfNameClick?: (pair: VariablePair) => void;
   onMaterialGlyphClick?: (pair: VariablePair) => void;
   onMaterialNameClick?: (pair: VariablePair) => void;
-  materialFill?: boolean;
 };
 
 export function PairCard({
@@ -24,7 +23,6 @@ export function PairCard({
   onSfNameClick,
   onMaterialGlyphClick,
   onMaterialNameClick,
-  materialFill = false,
 }: Props) {
   const meta = pair.descriptionFields;
   const sfName = meta?.sfName || "Unknown SF name";
@@ -45,7 +43,6 @@ export function PairCard({
           glyph={meta?.materialName || pair.materialValue || ""}
           name={meta?.materialName || pair.materialValue || ""}
           tone="material"
-          materialFill={materialFill}
           onGlyphClick={
             onMaterialGlyphClick ? () => onMaterialGlyphClick(pair) : undefined
           }

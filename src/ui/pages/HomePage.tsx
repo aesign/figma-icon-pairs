@@ -39,7 +39,6 @@ export function HomePage({
 }: Props) {
   const searchRef = useRef<HTMLInputElement>(null);
   const [copying, setCopying] = useState(false);
-  const [fillMode, setFillMode] = useState<"outline" | "fill">("outline");
   const materialSvgs = useMemo(
     () =>
       import.meta.glob(
@@ -113,20 +112,7 @@ export function HomePage({
     searchRef.current?.focus();
   }, [mappingComplete]);
 
-  const safePairs = pairs ?? [];
-
-  const filteredPairs = useMemo(() => {
-    if (fillMode === "fill") {
-      return safePairs.filter((pair) => {
-        const sfName = pair.descriptionFields?.sfName || pair.name || "";
-        return sfName.toLowerCase().endsWith(".fill");
-      });
-    }
-    return safePairs.filter((pair) => {
-      const sfName = pair.descriptionFields?.sfName || pair.name || "";
-      return !sfName.toLowerCase().endsWith(".fill");
-    });
-  }, [safePairs, fillMode]);
+  const filteredPairs = pairs ?? [];
 
   return (
     <section className={styles.section}>
@@ -134,14 +120,6 @@ export function HomePage({
         // title="Pairs"
         actions={
           <>
-            <Button
-              variant="secondary"
-              onClick={() =>
-                setFillMode((mode) => (mode === "outline" ? "fill" : "outline"))
-              }
-            >
-              {fillMode === "fill" ? "Fill" : "Outline"}
-            </Button>
             {!isDevMode ? (
               <>
                 <Button
@@ -231,7 +209,6 @@ export function HomePage({
                 onEdit={onEdit}
                 onDelete={onDelete}
                 showActions={!isDevMode}
-                materialFill={fillMode === "fill"}
                 onSfGlyphClick={async () => {
                   if (copying) return;
                   setCopying(true);

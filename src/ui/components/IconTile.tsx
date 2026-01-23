@@ -13,7 +13,6 @@ type Props = {
   style?: React.CSSProperties;
   onGlyphClick?: () => void;
   onNameClick?: () => void;
-  materialFill?: boolean;
 };
 
 export function IconTile({
@@ -28,7 +27,6 @@ export function IconTile({
   style,
   onGlyphClick,
   onNameClick,
-  materialFill = false,
 }: Props) {
   return (
     <div
@@ -45,10 +43,7 @@ export function IconTile({
         className={classes(
           styles.glyph,
           tone === "material"
-            ? classes(
-                styles.materialGlyph,
-                materialFill && styles.materialGlyphFill
-              )
+            ? styles.materialGlyph
             : styles.sfGlyph,
           onGlyphClick && styles.clickable
         )}
