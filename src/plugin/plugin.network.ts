@@ -58,7 +58,13 @@ function normalizeGroup(raw: any): VariableGroupInfo | null {
 
 async function listCollections(): Promise<VariableCollectionInfo[]> {
   const collections = await figma.variables.getLocalVariableCollectionsAsync();
+  const variables = await figma.variables.getLocalVariablesAsync("STRING");
+
   return collections.map((collection) => {
+    const collectionVariables = variables.filter(
+      (variable) => variable.variableCollectionId === collection.id
+    );
+
     const groupsRaw =
       (collection as any).variableGroups ??
       (collection as any).groups ??
@@ -70,6 +76,23 @@ async function listCollections(): Promise<VariableCollectionInfo[]> {
           .filter((group): group is VariableGroupInfo => Boolean(group))
       : [];
 
+    // Derive groups from variable names using slash-separated prefixes.
+    const derivedGroups = new Map<string, VariableGroupInfo>();
+    for (const variable of collectionVariables) {
+      const name = variable.name || "";
+      const parts = name.split("/").filter(Boolean);
+      for (let i = 1; i < parts.length; i++) {
+        const prefix = parts.slice(0, i).join("/");
+        if (!derivedGroups.has(prefix)) {
+          derivedGroups.set(prefix, { id: prefix, name: prefix });
+        }
+      }
+    }
+
+    const mergedGroups = new Map<string, VariableGroupInfo>();
+    for (const g of groups) mergedGroups.set(g.id, g);
+    for (const g of derivedGroups.values()) mergedGroups.set(g.id, g);
+
     return {
       id: collection.id,
       name: collection.name,
@@ -78,7 +101,7 @@ async function listCollections(): Promise<VariableCollectionInfo[]> {
         name: mode.name,
       })),
       defaultModeId: collection.defaultModeId,
-      groups,
+      groups: Array.from(mergedGroups.values()),
     };
   });
 }
@@ -147,6 +170,16 @@ function applyVariableGroup(variable: Variable, groupId?: string | null) {
   } catch (err) {
     console.warn("Unable to store group id in plugin data", err);
   }
+}
+
+function nameHasGroupPrefix(name: string, groupId: string): boolean {
+  if (!name || !groupId) return false;
+  const parts = name.split("/").filter(Boolean);
+  for (let i = 1; i < parts.length; i++) {
+    const prefix = parts.slice(0, i).join("/");
+    if (prefix === groupId) return true;
+  }
+  return false;
 }
 
 function serializePair(
@@ -518,7 +551,9 @@ PLUGIN_CHANNEL.registerMessageHandler(
     const filtered = variables.filter((variable) => {
       if (variable.variableCollectionId !== payload.collectionId) return false;
       if (payload.groupId) {
-        return readVariableGroupId(variable) === payload.groupId;
+        const explicitGroup = readVariableGroupId(variable);
+        if (explicitGroup === payload.groupId) return true;
+        return nameHasGroupPrefix(variable.name || "", payload.groupId);
       }
       return true;
     });
@@ -540,7 +575,9 @@ PLUGIN_CHANNEL.registerMessageHandler(
     ensureModes(collection, payload.sfModeIds, payload.materialModeIds);
 
     const variable = figma.variables.createVariable(
-      payload.sf.symbol,
+      payload.groupId
+        ? `${payload.groupId}/${payload.sf.symbol}`
+        : payload.sf.symbol,
       collection,
       "STRING"
     );
@@ -588,7 +625,12 @@ PLUGIN_CHANNEL.registerMessageHandler(
       throw new Error("Group cannot be changed for an existing pair.");
     }
 
-    variable.name = payload.sf.symbol;
+    // Re-apply to ensure pluginData/assignment is set
+    applyVariableGroup(variable, targetGroup);
+
+    variable.name = targetGroup
+      ? `${targetGroup}/${payload.sf.symbol}`
+      : payload.sf.symbol;
     payload.sfModeIds.forEach((modeId) =>
       variable.setValueForMode(modeId, payload.sf.symbol)
     );

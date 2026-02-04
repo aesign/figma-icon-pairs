@@ -100,8 +100,7 @@ export function SettingsPage({
             }}
             disabled={
               selectionLocked ||
-              !selectedCollection ||
-              !selectedCollection.groups.length
+              !selectedCollection
             }
           >
             <option value="">All groups</option>
