@@ -55,15 +55,15 @@ export type VariablePair = {
 export type LoadPairsRequest = {
   collectionId: string;
   groupId?: string | null;
-  sfModeId: string;
-  materialModeId: string;
+  sfModeIds: string[];
+  materialModeIds: string[];
 };
 
 export type CreatePairRequest = {
   collectionId: string;
   groupId?: string | null;
-  sfModeId: string;
-  materialModeId: string;
+  sfModeIds: string[];
+  materialModeIds: string[];
   sf: SfSymbol;
   material: MaterialIcon;
 };
@@ -75,6 +75,6 @@ export type UpdatePairRequest = CreatePairRequest & {
 export type MappingState = {
   collectionId: string | null;
   groupId: string | null;
-  sfModeId: string | null;
-  materialModeId: string | null;
+  sfModeIds: string[];
+  materialModeIds: string[];
 };

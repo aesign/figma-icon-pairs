@@ -115,7 +115,7 @@ function App() {
     []
   );
 
-  const { mapping, setMapping, mappingComplete, mappingLoaded, error: mappingError } =
+  const { mapping, setMapping, mappingLoaded, error: mappingError } =
     useMappingState();
   const [activePage, setActivePage] = useState<Page>("home");
   const [status, setStatus] = useState<string | null>(null);
@@ -125,11 +125,34 @@ function App() {
   const [editingPair, setEditingPair] = useState<VariablePair | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [collections, setCollections] = useState<VariableCollectionInfo[]>([]);
+  const [collectionsLoaded, setCollectionsLoaded] = useState(false);
   const [isDevMode, setIsDevMode] = useState(false);
   const [selectionPairIds, setSelectionPairIds] = useState<string[] | null>(
     null
   );
   const [selectionFilterActive, setSelectionFilterActive] = useState(false);
+
+  const selectedCollection = useMemo(
+    () =>
+      collections.find((c) => c.id === mapping.collectionId) ?? null,
+    [collections, mapping.collectionId]
+  );
+  const hasEnoughModes = (selectedCollection?.modes?.length ?? 0) >= 2;
+  const mappingReady = useMemo(() => {
+    if (!selectedCollection) return false;
+    const modeIds = selectedCollection.modes?.map((m) => m.modeId) ?? [];
+    const sfSet = new Set(mapping.sfModeIds || []);
+    const matSet = new Set(mapping.materialModeIds || []);
+    if (modeIds.length < 2) return false;
+    if (sfSet.size === 0 || matSet.size === 0) return false;
+    for (const id of modeIds) {
+      const sf = sfSet.has(id);
+      const mat = matSet.has(id);
+      if (sf === mat) return false; // either both or none -> invalid
+    }
+    return true;
+  }, [mapping.sfModeIds, mapping.materialModeIds, selectedCollection]);
+  const selectionLocked = Boolean(editingPair);
 
   const {
     pairs,
@@ -143,9 +166,9 @@ function App() {
   } = usePairs({
     collectionId: mapping.collectionId,
     groupId: mapping.groupId,
-    sfModeId: mapping.sfModeId,
-    materialModeId: mapping.materialModeId,
-    mappingComplete,
+    sfModeIds: mapping.sfModeIds,
+    materialModeIds: mapping.materialModeIds,
+    mappingComplete: mappingReady,
   });
 
   useEffect(() => {
@@ -157,12 +180,12 @@ function App() {
   }, [pairsError]);
 
   useEffect(() => {
-    if (mappingLoaded && !mappingComplete) {
+    if (mappingLoaded && collectionsLoaded && !mappingReady) {
       if (!isDevMode) {
         setActivePage("settings");
       }
     }
-  }, [mappingLoaded, mappingComplete, isDevMode]);
+  }, [mappingLoaded, collectionsLoaded, mappingReady, isDevMode]);
 
   useEffect(() => {
     if (isDevMode) {
@@ -200,6 +223,7 @@ function App() {
         const env = await fetchEnvironment();
         const localResult = await fetchCollections();
         setCollections(localResult);
+        setCollectionsLoaded(true);
         setIsDevMode(env.isDevMode);
         try {
           const selectionInfo = await fetchSelectionPairs();
@@ -220,22 +244,20 @@ function App() {
       ? collections.some((c) => c.id === mapping.collectionId)
       : false;
     if (!exists && collections.length > 0) {
+      const first = collections[0];
+      const modes = first.modes ?? [];
+      const sfDefault = modes[0]?.modeId ? [modes[0].modeId] : [];
+      const materialDefault =
+        modes.length > 1 ? modes.slice(1).map((m) => m.modeId) : [];
       setMapping({
-        collectionId: collections[0].id,
+        collectionId: first.id,
         groupId: null,
-        sfModeId: collections[0].defaultModeId ?? null,
-        materialModeId: null,
+        sfModeIds: sfDefault,
+        materialModeIds: materialDefault,
       });
     }
   }, [collections, mapping.collectionId, setMapping]);
 
-  const selectedCollection = useMemo(
-    () =>
-      collections.find((c) => c.id === mapping.collectionId) ?? null,
-    [collections, mapping.collectionId]
-  );
-  const hasEnoughModes = (selectedCollection?.modes?.length ?? 0) >= 2;
-  const selectionLocked = Boolean(editingPair);
   const availableCollections = useMemo(
     () =>
       collections.map((c) => ({
@@ -249,16 +271,25 @@ function App() {
   const onChangeMapping = (state: {
     collectionId?: string | null;
     groupId?: string | null;
-    sfModeId?: string | null;
-    materialModeId?: string | null;
+    sfModeIds?: string[];
+    materialModeIds?: string[];
   }) => {
-    const updated = { ...mapping, ...state };
-    if (state.collectionId !== undefined && state.collectionId !== mapping.collectionId) {
+    if (
+      state.collectionId !== undefined &&
+      state.collectionId !== mapping.collectionId
+    ) {
+      const nextCollection = collections.find(
+        (c) => c.id === state.collectionId
+      );
+      const modes = nextCollection?.modes ?? [];
+      const sfDefault = modes[0]?.modeId ? [modes[0].modeId] : [];
+      const materialDefault =
+        modes.length > 1 ? modes.slice(1).map((m) => m.modeId) : [];
       setMapping({
         collectionId: state.collectionId,
         groupId: null,
-        sfModeId: null,
-        materialModeId: null,
+        sfModeIds: sfDefault,
+        materialModeIds: materialDefault,
       });
       setSelectedSf(null);
       setSelectedMaterial(null);
@@ -267,7 +298,7 @@ function App() {
       setPairSearch("");
       return;
     }
-    setMapping(updated);
+    setMapping({ ...mapping, ...state });
   };
 
   const clearSelectionFilter = async () => {
@@ -353,8 +384,8 @@ function App() {
     setMapping({
       collectionId: null,
       groupId: null,
-      sfModeId: null,
-      materialModeId: null,
+      sfModeIds: [],
+      materialModeIds: [],
     });
   };
 
@@ -397,12 +428,12 @@ function App() {
   };
 
   const handleSubmit = async () => {
-    if (!mapping.collectionId || !mapping.sfModeId || !mapping.materialModeId) {
-      setStatus("Select a collection and two modes before continuing.");
-      return;
-    }
-    if (mapping.sfModeId === mapping.materialModeId) {
-      setStatus("Select two different modes for SF and Material.");
+    if (
+      !mapping.collectionId ||
+      !mapping.sfModeIds.length ||
+      !mapping.materialModeIds.length
+    ) {
+      setStatus("Assign modes to SF and Material before continuing.");
       return;
     }
     const sfChoice = selectedSf || (editingPair ? deriveSfFromPair(editingPair, sfSymbols) : null);
@@ -418,8 +449,8 @@ function App() {
     const basePayload = {
       collectionId: mapping.collectionId,
       groupId: mapping.groupId ?? null,
-      sfModeId: mapping.sfModeId,
-      materialModeId: mapping.materialModeId,
+      sfModeIds: mapping.sfModeIds,
+      materialModeIds: mapping.materialModeIds,
       sf: sfChoice,
       material: materialChoice,
     };
@@ -455,14 +486,14 @@ function App() {
           collections={availableCollections}
           collectionId={mapping.collectionId}
           groupId={mapping.groupId}
-          sfModeId={mapping.sfModeId}
-          materialModeId={mapping.materialModeId}
+          sfModeIds={mapping.sfModeIds}
+          materialModeIds={mapping.materialModeIds}
           onChange={onChangeMapping}
           onReset={resetMapping}
           onReloadPairs={refreshPairs}
           onClose={() => setActivePage("home")}
           pairsLoading={pairsLoading}
-          mappingComplete={mappingComplete}
+          mappingComplete={mappingReady}
           selectedCollection={selectedCollection}
           hasEnoughModes={hasEnoughModes}
           selectionLocked={selectionLocked}
@@ -474,7 +505,7 @@ function App() {
           <HomePage
             pairs={selectionFilteredPairs}
             loading={pairsLoading}
-            mappingComplete={mappingComplete}
+            mappingComplete={mappingReady}
             selectionActive={selectionFilterActive}
             isDevMode={isDevMode}
             onSearch={setPairSearch}
@@ -503,7 +534,7 @@ function App() {
 
       {activePage === "create" && !isDevMode && (
         <CreatePage
-          mappingComplete={mappingComplete}
+          mappingComplete={mappingReady}
           hasEnoughModes={hasEnoughModes}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}

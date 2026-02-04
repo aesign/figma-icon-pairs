@@ -14,8 +14,8 @@ type UseMappingStateResult = {
 const EMPTY_MAPPING: MappingState = {
   collectionId: null,
   groupId: null,
-  sfModeId: null,
-  materialModeId: null,
+  sfModeIds: [],
+  materialModeIds: [],
 };
 
 export function useMappingState(): UseMappingStateResult {
@@ -42,14 +42,15 @@ export function useMappingState(): UseMappingStateResult {
     saveMappingState(mapping).catch((err) => setError(formatError(err)));
   }, [mapping, mappingLoaded]);
 
-  const mappingComplete = useMemo(
-    () =>
+  const mappingComplete = useMemo(() => {
+    return (
       Boolean(mapping.collectionId) &&
-      Boolean(mapping.sfModeId) &&
-      Boolean(mapping.materialModeId) &&
-      mapping.sfModeId !== mapping.materialModeId,
-    [mapping]
-  );
+      Array.isArray(mapping.sfModeIds) &&
+      Array.isArray(mapping.materialModeIds) &&
+      mapping.sfModeIds.length > 0 &&
+      mapping.materialModeIds.length > 0
+    );
+  }, [mapping]);
 
   const setMapping = (state: Partial<MappingState>) => {
     setMappingState((prev) => ({ ...prev, ...state }));

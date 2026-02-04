@@ -12,6 +12,7 @@ import {
 
 const GROUP_PLUGIN_DATA_KEY = "variableGroupId";
 const MAPPING_STATE_KEY = "mappingState";
+const PLUGIN_DATA_KEY = "ipairs"; // compact key to stay within plugin data limits
 
 const log = (...args: any[]) => {
   try {
@@ -84,15 +85,34 @@ async function listCollections(): Promise<VariableCollectionInfo[]> {
 
 function ensureModes(
   collection: VariableCollection,
-  sfModeId: string,
-  materialModeId: string
+  sfModeIds: string[],
+  materialModeIds: string[]
 ) {
-  const modeIds = new Set(collection.modes.map((mode) => mode.modeId));
-  if (!modeIds.has(sfModeId) || !modeIds.has(materialModeId)) {
-    throw new Error("Selected modes do not belong to the collection.");
+  const allModeIds = collection.modes.map((mode) => mode.modeId);
+  const sfSet = new Set(sfModeIds);
+  const matSet = new Set(materialModeIds);
+
+  if (sfSet.size === 0 || matSet.size === 0) {
+    throw new Error("Assign at least one mode to SF and one to Material.");
   }
-  if (sfModeId === materialModeId) {
-    throw new Error("SF and Material modes must be different.");
+
+  for (const id of sfSet) {
+    if (!allModeIds.includes(id)) {
+      throw new Error("Some SF modes are not part of the collection.");
+    }
+    if (matSet.has(id)) {
+      throw new Error("A mode cannot be assigned to both SF and Material.");
+    }
+  }
+  for (const id of matSet) {
+    if (!allModeIds.includes(id)) {
+      throw new Error("Some Material modes are not part of the collection.");
+    }
+  }
+
+  const covered = new Set([...sfSet, ...matSet]);
+  if (covered.size !== allModeIds.length) {
+    throw new Error("Every mode in the collection must be assigned to SF or Material.");
   }
 }
 
@@ -131,14 +151,18 @@ function applyVariableGroup(variable: Variable, groupId?: string | null) {
 
 function serializePair(
   variable: Variable,
-  sfModeId: string,
-  materialModeId: string
+  sfModeIds: string[],
+  materialModeIds: string[]
 ): VariablePair {
   const values = variable.valuesByMode ?? {};
+  const sfModeId = sfModeIds[0];
+  const materialModeId = materialModeIds[0];
   const sfValue =
-    typeof values[sfModeId] === "string" ? (values[sfModeId] as string) : null;
+    sfModeId && typeof values[sfModeId] === "string"
+      ? (values[sfModeId] as string)
+      : null;
   const materialValue =
-    typeof values[materialModeId] === "string"
+    materialModeId && typeof values[materialModeId] === "string"
       ? (values[materialModeId] as string)
       : null;
 
@@ -152,6 +176,115 @@ function serializePair(
     sfValue,
     materialValue,
   };
+}
+
+type PluginDataPair = {
+  id: string;
+  sf: string;
+  mat: string;
+  c: number; // created
+  u: number; // updated
+};
+
+function readStoredPairs(): Map<string, PluginDataPair> {
+  try {
+    const raw = figma.root.getPluginData(PLUGIN_DATA_KEY);
+    if (!raw) return new Map();
+    const parsed = JSON.parse(raw);
+    if (!parsed || !Array.isArray(parsed.p)) return new Map();
+    const map = new Map<string, PluginDataPair>();
+    for (const entry of parsed.p) {
+      if (
+        Array.isArray(entry) &&
+        typeof entry[0] === "string" &&
+        typeof entry[1] === "string" &&
+        typeof entry[2] === "string" &&
+        typeof entry[3] === "number" &&
+        typeof entry[4] === "number"
+      ) {
+        map.set(entry[0], {
+          id: entry[0],
+          sf: entry[1],
+          mat: entry[2],
+          c: entry[3],
+          u: entry[4],
+        });
+      }
+    }
+    return map;
+  } catch (err) {
+    console.warn("Failed to parse pluginData pairs", err);
+    return new Map();
+  }
+}
+
+function compactValue(valuesByMode: Variable["valuesByMode"]): string {
+  if (!valuesByMode || typeof valuesByMode !== "object") return "";
+  for (const value of Object.values(valuesByMode)) {
+    if (typeof value === "string" && value) return value;
+  }
+  return "";
+}
+
+function persistPairsToPluginData(pairs: PluginDataPair[], reason: string) {
+  const payload = {
+    v: 1,
+    p: pairs.map((p) => [p.id, p.sf, p.mat, p.c, p.u]),
+  };
+  try {
+    figma.root.setPluginData(PLUGIN_DATA_KEY, JSON.stringify(payload));
+    log("pluginData updated", {
+      reason,
+      count: pairs.length,
+      payload,
+    });
+  } catch (err) {
+    console.warn("Unable to store pluginData pairs", err);
+  }
+}
+
+export async function snapshotPairsPluginData() {
+  const stored = readStoredPairs();
+  const now = Date.now();
+  const variables = await figma.variables.getLocalVariablesAsync("STRING");
+  const pairs: PluginDataPair[] = variables.map((variable) => {
+    const desc = parsePairDescription(variable.description ?? "") || null;
+    const sfName = desc?.sfName || variable.name || "";
+    const matName =
+      desc?.materialName || compactValue(variable.valuesByMode) || "";
+    const prev = stored.get(variable.id);
+    return {
+      id: variable.id,
+      sf: sfName,
+      mat: matName,
+      c: prev?.c ?? now,
+      u: now,
+    };
+  });
+  persistPairsToPluginData(pairs, "snapshot");
+}
+
+async function upsertPairPluginData(variable: Variable) {
+  const stored = readStoredPairs();
+  const now = Date.now();
+  const desc = parsePairDescription(variable.description ?? "") || null;
+  const sfName = desc?.sfName || variable.name || "";
+  const matName = desc?.materialName || compactValue(variable.valuesByMode) || "";
+  const prev = stored.get(variable.id);
+  stored.set(variable.id, {
+    id: variable.id,
+    sf: sfName,
+    mat: matName,
+    c: prev?.c ?? now,
+    u: now,
+  });
+  persistPairsToPluginData(Array.from(stored.values()), "upsert");
+}
+
+async function removePairPluginData(variableId: string) {
+  const stored = readStoredPairs();
+  stored.delete(variableId);
+  persistPairsToPluginData(Array.from(stored.values()), "remove");
 }
 
 async function ensureCollection(collectionId: string): Promise<VariableCollection> {
@@ -346,11 +479,24 @@ PLUGIN_CHANNEL.registerMessageHandler("loadMappingState", async () => {
     return {
       collectionId: null,
       groupId: null,
-      sfModeId: null,
-      materialModeId: null,
+      sfModeIds: [],
+      materialModeIds: [],
     } satisfies MappingState;
   }
-  return state as MappingState;
+  const anyState: any = state;
+  const migrateIds = (value: any) => {
+    if (Array.isArray(value)) return value.filter((v) => typeof v === "string");
+    if (typeof value === "string") return value ? [value] : [];
+    return [];
+  };
+  return {
+    collectionId: anyState.collectionId ?? null,
+    groupId: anyState.groupId ?? null,
+    sfModeIds: migrateIds(anyState.sfModeIds ?? anyState.sfModeId),
+    materialModeIds: migrateIds(
+      anyState.materialModeIds ?? anyState.materialModeId
+    ),
+  } satisfies MappingState;
 });
 
 PLUGIN_CHANNEL.registerMessageHandler(
@@ -366,7 +512,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
   async (payload: LoadPairsRequest) => {
     log("loadPairs", payload);
     const collection = await ensureCollection(payload.collectionId);
-    ensureModes(collection, payload.sfModeId, payload.materialModeId);
+    ensureModes(collection, payload.sfModeIds, payload.materialModeIds);
 
     const variables = await figma.variables.getLocalVariablesAsync("STRING");
     const filtered = variables.filter((variable) => {
@@ -378,7 +524,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
     });
 
     return filtered.map((variable) =>
-      serializePair(variable, payload.sfModeId, payload.materialModeId)
+      serializePair(variable, payload.sfModeIds, payload.materialModeIds)
     );
   }
 );
@@ -391,7 +537,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
       throw new Error("Variables are only supported in Figma files.");
     }
     const collection = await ensureCollection(payload.collectionId);
-    ensureModes(collection, payload.sfModeId, payload.materialModeId);
+    ensureModes(collection, payload.sfModeIds, payload.materialModeIds);
 
     const variable = figma.variables.createVariable(
       payload.sf.symbol,
@@ -401,15 +547,20 @@ PLUGIN_CHANNEL.registerMessageHandler(
     log("createPair variable created", variable.id);
     applyVariableGroup(variable, payload.groupId ?? null);
     variable.scopes = ["TEXT_CONTENT"];
-    variable.setValueForMode(payload.sfModeId, payload.sf.symbol);
-    variable.setValueForMode(payload.materialModeId, payload.material.name);
+    payload.sfModeIds.forEach((modeId) =>
+      variable.setValueForMode(modeId, payload.sf.symbol)
+    );
+    payload.materialModeIds.forEach((modeId) =>
+      variable.setValueForMode(modeId, payload.material.name)
+    );
     variable.description = buildPairDescription(payload.sf, payload.material);
 
     log("createPair variable configured", {
       id: variable.id,
       name: variable.name,
     });
-    return serializePair(variable, payload.sfModeId, payload.materialModeId);
+    await upsertPairPluginData(variable);
+    return serializePair(variable, payload.sfModeIds, payload.materialModeIds);
   }
 );
 
@@ -429,7 +580,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
     }
 
     const collection = await ensureCollection(payload.collectionId);
-    ensureModes(collection, payload.sfModeId, payload.materialModeId);
+    ensureModes(collection, payload.sfModeIds, payload.materialModeIds);
 
     const currentGroupId = readVariableGroupId(variable);
     const targetGroup = payload.groupId ?? currentGroupId ?? null;
@@ -438,12 +589,17 @@ PLUGIN_CHANNEL.registerMessageHandler(
     }
 
     variable.name = payload.sf.symbol;
-    variable.setValueForMode(payload.sfModeId, payload.sf.symbol);
-    variable.setValueForMode(payload.materialModeId, payload.material.name);
+    payload.sfModeIds.forEach((modeId) =>
+      variable.setValueForMode(modeId, payload.sf.symbol)
+    );
+    payload.materialModeIds.forEach((modeId) =>
+      variable.setValueForMode(modeId, payload.material.name)
+    );
     variable.description = buildPairDescription(payload.sf, payload.material);
     variable.scopes = ["TEXT_CONTENT"];
 
-    return serializePair(variable, payload.sfModeId, payload.materialModeId);
+    await upsertPairPluginData(variable);
+    return serializePair(variable, payload.sfModeIds, payload.materialModeIds);
   }
 );
 
@@ -452,4 +608,5 @@ PLUGIN_CHANNEL.registerMessageHandler("deletePair", async (variableId) => {
   const variable = await figma.variables.getVariableByIdAsync(variableId);
   if (!variable) return;
   variable.remove();
+  await removePairPluginData(variableId);
 });

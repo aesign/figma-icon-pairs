@@ -315,3 +315,40 @@ button {
   width: 100%;
   text-align: center;
 }
+
+.modeAssignment {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.modeRows {
+  border: 1px solid var(--figma-color-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.modeRow {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--figma-color-border);
+}
+
+.modeRow:last-child {
+  border-bottom: none;
+}
+
+.modeName {
+  font-weight: 500;
+}
+
+.modeChoice {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}

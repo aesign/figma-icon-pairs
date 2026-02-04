@@ -23,8 +23,8 @@ function buildPairSearchText(pair: VariablePair): string {
 type UsePairsArgs = {
   collectionId: string | null;
   groupId: string | null;
-  sfModeId: string | null;
-  materialModeId: string | null;
+  sfModeIds: string[];
+  materialModeIds: string[];
   mappingComplete: boolean;
 };
 
@@ -42,8 +42,8 @@ type UsePairsResult = {
 export function usePairs({
   collectionId,
   groupId,
-  sfModeId,
-  materialModeId,
+  sfModeIds,
+  materialModeIds,
   mappingComplete,
 }: UsePairsArgs): UsePairsResult {
   const [pairs, setPairs] = useState<VariablePair[]>([]);
@@ -52,7 +52,12 @@ export function usePairs({
   const [error, setError] = useState<string | null>(null);
 
   const refresh = async () => {
-    if (!mappingComplete || !collectionId || !sfModeId || !materialModeId) {
+    if (
+      !mappingComplete ||
+      !collectionId ||
+      !sfModeIds.length ||
+      !materialModeIds.length
+    ) {
       setPairs([]);
       return;
     }
@@ -61,8 +66,8 @@ export function usePairs({
       const loaded = await fetchPairs({
         collectionId,
         groupId: groupId ?? null,
-        sfModeId,
-        materialModeId,
+        sfModeIds,
+        materialModeIds,
       });
       setPairs(loaded);
       setError(null);
@@ -75,7 +80,7 @@ export function usePairs({
 
   useEffect(() => {
     refresh();
-  }, [collectionId, groupId, sfModeId, materialModeId, mappingComplete]);
+  }, [collectionId, groupId, sfModeIds, materialModeIds, mappingComplete]);
 
   const visiblePairs = useMemo(
     () => pairs.filter((pair) => pair.descriptionFields),

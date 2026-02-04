@@ -8,13 +8,13 @@ type Props = {
   collections: VariableCollectionInfo[];
   collectionId: string | null;
   groupId: string | null;
-  sfModeId: string | null;
-  materialModeId: string | null;
+  sfModeIds: string[];
+  materialModeIds: string[];
   onChange: (state: {
     collectionId?: string | null;
     groupId?: string | null;
-    sfModeId?: string | null;
-    materialModeId?: string | null;
+    sfModeIds?: string[];
+    materialModeIds?: string[];
   }) => void;
   onReset: () => void;
   onReloadPairs: () => void;
@@ -30,8 +30,8 @@ export function SettingsPage({
   collections,
   collectionId,
   groupId,
-  sfModeId,
-  materialModeId,
+  sfModeIds,
+  materialModeIds,
   onChange,
   onReset,
   onReloadPairs,
@@ -44,6 +44,22 @@ export function SettingsPage({
 }: Props) {
   const currentModes = selectedCollection?.modes ?? [];
   const showMappingBlocker = selectedCollection ? !hasEnoughModes : false;
+  const sfSet = new Set(sfModeIds);
+  const matSet = new Set(materialModeIds);
+
+  const assignMode = (modeId: string, target: "sf" | "material") => {
+    if (selectionLocked) return;
+    const nextSf = new Set(sfModeIds);
+    const nextMat = new Set(materialModeIds);
+    nextSf.delete(modeId);
+    nextMat.delete(modeId);
+    if (target === "sf") nextSf.add(modeId);
+    else nextMat.add(modeId);
+    onChange({
+      sfModeIds: Array.from(nextSf),
+      materialModeIds: Array.from(nextMat),
+    });
+  };
 
   return (
     <section className={styles.section}>
@@ -96,39 +112,42 @@ export function SettingsPage({
             ))}
           </Select>
         </div>
-        <div>
-          <div className={styles.label}>Mode for SF</div>
-          <Select
-            value={sfModeId ?? ""}
-            onChange={(event) => onChange({ sfModeId: event.target.value || null })}
-            disabled={!selectedCollection || selectionLocked}
-          >
-            <option value="">Select a mode</option>
-            {currentModes.map((mode) => (
-              <option key={mode.modeId} value={mode.modeId}>
-                {mode.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <div className={styles.label}>Mode for Material</div>
-          <Select
-            value={materialModeId ?? ""}
-            onChange={(event) =>
-              onChange({ materialModeId: event.target.value || null })
-            }
-            disabled={!selectedCollection || selectionLocked}
-          >
-            <option value="">Select a mode</option>
-            {currentModes
-              .filter((mode) => mode.modeId !== sfModeId)
-              .map((mode) => (
-                <option key={mode.modeId} value={mode.modeId}>
-                  {mode.name}
-                </option>
-              ))}
-          </Select>
+      </div>
+      <div className={styles.modeAssignment}>
+        <div className={styles.label}>Assign each mode</div>
+        <div className={styles.modeRows}>
+          {currentModes.map((mode) => {
+            const owner = sfSet.has(mode.modeId)
+              ? "sf"
+              : matSet.has(mode.modeId)
+              ? "material"
+              : "none";
+            return (
+              <div key={mode.modeId} className={styles.modeRow}>
+                <div className={styles.modeName}>{mode.name}</div>
+                <label className={styles.modeChoice}>
+                  <input
+                    type="radio"
+                    name={`mode-${mode.modeId}`}
+                    checked={owner === "sf"}
+                    onChange={() => assignMode(mode.modeId, "sf")}
+                    disabled={selectionLocked}
+                  />
+                  SF
+                </label>
+                <label className={styles.modeChoice}>
+                  <input
+                    type="radio"
+                    name={`mode-${mode.modeId}`}
+                    checked={owner === "material"}
+                    onChange={() => assignMode(mode.modeId, "material")}
+                    disabled={selectionLocked}
+                  />
+                  Material
+                </label>
+              </div>
+            );
+          })}
         </div>
       </div>
       {showMappingBlocker ? (
