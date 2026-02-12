@@ -14,6 +14,8 @@
     "types": "run-s types:*",
     "types:src": "tsc",
     "types:node": "tsc -P tsconfig.node.json",
+    "sf:update": "node ./scripts/update-sf-json.mjs",
+    "sf:update:check": "node ./scripts/update-sf-json.mjs --check",
     "build": "run-s build:*",
     "prebuild": "run-s types clean",
     "build:ui": "vite build -c ./vite.config.ui.ts",
