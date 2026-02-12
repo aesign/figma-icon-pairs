@@ -124,25 +124,10 @@ export function CreatePage({
                     key={symbol.name}
                     className={classes(
                       cardStyles.resultCard,
-                      selectedSf?.name === symbol.name && cardStyles.selected,
-                      usedSfValues.has(symbol.symbol) &&
-                      usedSfValues.get(symbol.symbol) !== editingPair?.id &&
-                      cardStyles.disabled
+                      selectedSf?.name === symbol.name && cardStyles.selected
                     )}
                     type="button"
-                    onClick={() => {
-                      if (
-                        usedSfValues.has(symbol.symbol) &&
-                        usedSfValues.get(symbol.symbol) !== editingPair?.id
-                      ) {
-                        return;
-                      }
-                      onSelectSf(symbol);
-                    }}
-                    disabled={
-                      usedSfValues.has(symbol.symbol) &&
-                      usedSfValues.get(symbol.symbol) !== editingPair?.id
-                    }
+                    onClick={() => onSelectSf(symbol)}
                   >
                     <IconTile
                       glyph={symbol.symbol}
@@ -155,10 +140,6 @@ export function CreatePage({
                           : null
                       }
                       selected={selectedSf?.name === symbol.name}
-                      disabled={
-                        usedSfValues.has(symbol.symbol) &&
-                        usedSfValues.get(symbol.symbol) !== editingPair?.id
-                      }
                       interactive
                     />
                   </button>
@@ -201,25 +182,10 @@ export function CreatePage({
                     key={icon.name}
                     className={classes(
                       cardStyles.resultCard,
-                      selectedMaterial?.name === icon.name && cardStyles.selected,
-                      usedMaterialNames.has(icon.name) &&
-                      usedMaterialNames.get(icon.name) !== editingPair?.id &&
-                      cardStyles.disabled
+                      selectedMaterial?.name === icon.name && cardStyles.selected
                     )}
                     type="button"
-                    onClick={() => {
-                      if (
-                        usedMaterialNames.has(icon.name) &&
-                        usedMaterialNames.get(icon.name) !== editingPair?.id
-                      ) {
-                        return;
-                      }
-                      onSelectMaterial(icon);
-                    }}
-                    disabled={
-                      usedMaterialNames.has(icon.name) &&
-                      usedMaterialNames.get(icon.name) !== editingPair?.id
-                    }
+                    onClick={() => onSelectMaterial(icon)}
                   >
                     <IconTile
                       glyph={icon.name}
@@ -232,10 +198,6 @@ export function CreatePage({
                           : null
                       }
                       selected={selectedMaterial?.name === icon.name}
-                      disabled={
-                        usedMaterialNames.has(icon.name) &&
-                        usedMaterialNames.get(icon.name) !== editingPair?.id
-                      }
                       interactive
                     />
                   </button>
