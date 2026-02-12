@@ -113,6 +113,32 @@ export function HomePage({
   }, [mappingComplete]);
 
   const filteredPairs = pairs ?? [];
+  const exportPairs = filteredPairs.map((pair) => ({
+    sf: pair.descriptionFields?.sfName || pair.name || pair.sfValue || "",
+    material:
+      pair.descriptionFields?.materialName || pair.materialValue || "",
+  }));
+
+  const handleExport = async () => {
+    try {
+      const payload = JSON.stringify(exportPairs, null, 2);
+      const blob = new Blob([payload], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "icon-pairs-export.json";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      await notify(
+        `Exported ${exportPairs.length} pair${exportPairs.length === 1 ? "" : "s"}`
+      );
+    } catch (err) {
+      console.warn("export failed", err);
+      await notify("Unable to export pairs");
+    }
+  };
 
   return (
     <section className={styles.section}>
@@ -120,6 +146,12 @@ export function HomePage({
         // title="Pairs"
         actions={
           <>
+            <Button
+              variant="secondary"
+              icon="download"
+              onClick={handleExport}
+              disabled={loading || !mappingComplete}
+            />
             {!isDevMode ? (
               <>
                 <Button
