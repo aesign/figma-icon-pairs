@@ -1,7 +1,5 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { MappingState } from "@common/types";
-import { loadMappingState, saveMappingState } from "@ui/services/pluginApi";
-import { formatError } from "@ui/utils/errors";
 
 type UseMappingStateResult = {
   mapping: MappingState;
@@ -16,32 +14,13 @@ const EMPTY_MAPPING: MappingState = {
   groupId: null,
   sfModeIds: [],
   materialModeIds: [],
-  libraryCollectionKey: null,
+  libraryCollectionKey: "bfa1827c219b14613541995a265ff542ea795e05",
 };
 
 export function useMappingState(): UseMappingStateResult {
   const [mapping, setMappingState] = useState<MappingState>(EMPTY_MAPPING);
-  const [mappingLoaded, setMappingLoaded] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      try {
-        const state = await loadMappingState();
-        setMappingState(state ?? EMPTY_MAPPING);
-      } catch (err) {
-        setError(formatError(err));
-      } finally {
-        setMappingLoaded(true);
-      }
-    };
-    load();
-  }, []);
-
-  useEffect(() => {
-    if (!mappingLoaded) return;
-    saveMappingState(mapping).catch((err) => setError(formatError(err)));
-  }, [mapping, mappingLoaded]);
+  const mappingLoaded = true;
+  const error: string | null = null;
 
   const mappingComplete = useMemo(() => {
     return (

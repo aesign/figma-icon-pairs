@@ -20,6 +20,8 @@ import {
   fetchLibraryCollections,
   fetchLibraryPairs,
   fetchCollections,
+  loadSourceModeSettings,
+  saveSourceModeSettings,
   fetchSelectionPairs,
   clearSelection as clearSelectionApi,
   createPair as createPairApi,
@@ -232,6 +234,19 @@ function App() {
           const localResult = await fetchCollections();
           setCollections(localResult);
           try {
+            const sourceSettings = await loadSourceModeSettings();
+            if (sourceSettings) {
+              setMapping({
+                collectionId: sourceSettings.collectionId,
+                sfModeIds: sourceSettings.sfModeIds,
+                materialModeIds: sourceSettings.materialModeIds,
+                groupId: null,
+              });
+            }
+          } catch (err) {
+            console.warn("Unable to load source mode settings", err);
+          }
+          try {
             const selectionInfo = await fetchSelectionPairs();
             setSelectionPairIds(selectionInfo.pairIds);
             setSelectionFilterActive(selectionInfo.selectionCount > 0);
@@ -255,6 +270,23 @@ function App() {
     };
     loadCollections();
   }, [mapping.libraryCollectionKey, setMapping]);
+
+  useEffect(() => {
+    if (readOnlyMode || !collectionsLoaded) return;
+    saveSourceModeSettings({
+      collectionId: mapping.collectionId,
+      sfModeIds: mapping.sfModeIds,
+      materialModeIds: mapping.materialModeIds,
+    }).catch((err) => {
+      console.warn("Unable to save source mode settings", err);
+    });
+  }, [
+    readOnlyMode,
+    collectionsLoaded,
+    mapping.collectionId,
+    mapping.sfModeIds,
+    mapping.materialModeIds,
+  ]);
 
   useEffect(() => {
     if (!readOnlyMode) return;

@@ -5,7 +5,7 @@ import {
   LibraryCollectionInfo,
   LoadLibraryPairsRequest,
   LoadPairsRequest,
-  MappingState,
+  SourceModeSettings,
   UpdatePairRequest,
   VariableCollectionInfo,
   VariablePair,
@@ -24,8 +24,8 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
   getSelectionPairs(): Promise<{ pairIds: string[]; selectionCount: number }>;
   clearSelection(): Promise<void>;
   notify(message: string): Promise<void>;
-  loadMappingState(): Promise<MappingState>;
-  saveMappingState(state: MappingState): Promise<void>;
+  loadSourceModeSettings(): Promise<SourceModeSettings | null>;
+  saveSourceModeSettings(settings: SourceModeSettings): Promise<void>;
   loadPairs(payload: LoadPairsRequest): Promise<VariablePair[]>;
   loadLibraryPairs(payload: LoadLibraryPairsRequest): Promise<VariablePair[]>;
   createPair(payload: CreatePairRequest): Promise<VariablePair>;

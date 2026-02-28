@@ -5,7 +5,7 @@ import {
   LibraryCollectionInfo,
   LoadLibraryPairsRequest,
   LoadPairsRequest,
-  MappingState,
+  SourceModeSettings,
   UpdatePairRequest,
   VariableCollectionInfo,
   VariablePair,
@@ -39,12 +39,14 @@ export async function fetchCollections(): Promise<VariableCollectionInfo[]> {
   return UI_CHANNEL.request(PLUGIN, "getCollections", []);
 }
 
-export async function loadMappingState(): Promise<MappingState> {
-  return UI_CHANNEL.request(PLUGIN, "loadMappingState", []);
+export async function loadSourceModeSettings(): Promise<SourceModeSettings | null> {
+  return UI_CHANNEL.request(PLUGIN, "loadSourceModeSettings", []);
 }
 
-export async function saveMappingState(state: MappingState): Promise<void> {
-  await UI_CHANNEL.request(PLUGIN, "saveMappingState", [state]);
+export async function saveSourceModeSettings(
+  settings: SourceModeSettings
+): Promise<void> {
+  await UI_CHANNEL.request(PLUGIN, "saveSourceModeSettings", [settings]);
 }
 
 export async function fetchPairs(

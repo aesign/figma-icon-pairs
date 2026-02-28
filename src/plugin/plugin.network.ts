@@ -6,7 +6,7 @@ import {
   LibraryCollectionInfo,
   LoadLibraryPairsRequest,
   LoadPairsRequest,
-  MappingState,
+  SourceModeSettings,
   UpdatePairRequest,
   VariableCollectionInfo,
   VariableGroupInfo,
@@ -15,6 +15,7 @@ import {
 
 const GROUP_PLUGIN_DATA_KEY = "variableGroupId";
 const PLUGIN_DATA_KEY = "ipairs"; // compact key to stay within plugin data limits
+const SOURCE_MODE_SETTINGS_PLUGIN_DATA_KEY = "ipairsSourceSettings";
 const HARDCODED_LIBRARY_COLLECTION_KEY =
   "bfa1827c219b14613541995a265ff542ea795e05";
 let readOnlyStartupLogged = false;
@@ -417,6 +418,27 @@ function persistPairsToPluginData(pairs: PluginDataPair[], reason: string) {
   }
 }
 
+function parseSourceModeSettings(raw: string): SourceModeSettings | null {
+  try {
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+    const collectionId =
+      typeof (parsed as any).collectionId === "string"
+        ? (parsed as any).collectionId
+        : null;
+    const sfModeIds = Array.isArray((parsed as any).sfModeIds)
+      ? (parsed as any).sfModeIds.filter((value: any) => typeof value === "string")
+      : [];
+    const materialModeIds = Array.isArray((parsed as any).materialModeIds)
+      ? (parsed as any).materialModeIds.filter((value: any) => typeof value === "string")
+      : [];
+    return { collectionId, sfModeIds, materialModeIds };
+  } catch {
+    return null;
+  }
+}
+
 export async function snapshotPairsPluginData() {
   const stored = readStoredPairs();
   const now = Date.now();
@@ -654,21 +676,32 @@ PLUGIN_CHANNEL.registerMessageHandler("getCollections", async () => {
   return listCollections();
 });
 
-PLUGIN_CHANNEL.registerMessageHandler("loadMappingState", async () => {
-  log("loadMappingState");
-  return {
-    collectionId: null,
-    groupId: null,
-    sfModeIds: [],
-    materialModeIds: [],
-    libraryCollectionKey: HARDCODED_LIBRARY_COLLECTION_KEY,
-  } satisfies MappingState;
+PLUGIN_CHANNEL.registerMessageHandler("loadSourceModeSettings", async () => {
+  const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+  if (!resolveCanWrite(localCollections.length)) return null;
+  return parseSourceModeSettings(
+    figma.root.getPluginData(SOURCE_MODE_SETTINGS_PLUGIN_DATA_KEY)
+  );
 });
 
 PLUGIN_CHANNEL.registerMessageHandler(
-  "saveMappingState",
-  async (_state: MappingState) => {
-    log("saveMappingState:ignored");
+  "saveSourceModeSettings",
+  async (settings: SourceModeSettings) => {
+    const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+    if (!resolveCanWrite(localCollections.length)) return;
+    const payload: SourceModeSettings = {
+      collectionId: settings?.collectionId ?? null,
+      sfModeIds: Array.isArray(settings?.sfModeIds)
+        ? settings.sfModeIds.filter((id) => typeof id === "string")
+        : [],
+      materialModeIds: Array.isArray(settings?.materialModeIds)
+        ? settings.materialModeIds.filter((id) => typeof id === "string")
+        : [],
+    };
+    figma.root.setPluginData(
+      SOURCE_MODE_SETTINGS_PLUGIN_DATA_KEY,
+      JSON.stringify(payload)
+    );
   }
 );
 

@@ -94,3 +94,9 @@ export type EnvironmentInfo = {
   isDevMode: boolean;
   canWrite: boolean;
 };
+
+export type SourceModeSettings = {
+  collectionId: string | null;
+  sfModeIds: string[];
+  materialModeIds: string[];
+};
