@@ -31,6 +31,12 @@ export type VariableCollectionInfo = {
   groups: VariableGroupInfo[];
 };
 
+export type LibraryCollectionInfo = {
+  key: string;
+  name: string;
+  libraryName: string;
+};
+
 export type IconPairDescription = {
   sfName: string;
   sfGlyph: string;
@@ -59,6 +65,10 @@ export type LoadPairsRequest = {
   materialModeIds: string[];
 };
 
+export type LoadLibraryPairsRequest = {
+  libraryCollectionKey: string;
+};
+
 export type CreatePairRequest = {
   collectionId: string;
   groupId?: string | null;
@@ -77,4 +87,10 @@ export type MappingState = {
   groupId: string | null;
   sfModeIds: string[];
   materialModeIds: string[];
+  libraryCollectionKey: string | null;
+};
+
+export type EnvironmentInfo = {
+  isDevMode: boolean;
+  canWrite: boolean;
 };

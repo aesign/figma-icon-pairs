@@ -1,5 +1,6 @@
 import { PLUGIN, UI } from "@common/networkSides";
 import {
+  isSourceWriteMode,
   PLUGIN_CHANNEL,
   snapshotPairsPluginData,
   startSelectionWatcher,
@@ -16,9 +17,11 @@ async function bootstrap() {
   });
 
   startSelectionWatcher();
-  snapshotPairsPluginData().catch((err) =>
-    console.warn("Failed to snapshot plugin data", err)
-  );
+  if (await isSourceWriteMode()) {
+    snapshotPairsPluginData().catch((err) =>
+      console.warn("Failed to snapshot plugin data", err)
+    );
+  }
 
   console.log("Bootstrapped @", Networker.getCurrentSide().name);
 }

@@ -1,6 +1,9 @@
 import { PLUGIN } from "@common/networkSides";
 import {
   CreatePairRequest,
+  EnvironmentInfo,
+  LibraryCollectionInfo,
+  LoadLibraryPairsRequest,
   LoadPairsRequest,
   MappingState,
   UpdatePairRequest,
@@ -9,8 +12,12 @@ import {
 } from "@common/types";
 import { UI_CHANNEL } from "@ui/app.network";
 
-export async function fetchEnvironment(): Promise<{ isDevMode: boolean; isLibraryFile?: boolean }> {
+export async function fetchEnvironment(): Promise<EnvironmentInfo> {
   return UI_CHANNEL.request(PLUGIN, "getEnvironment", []);
+}
+
+export async function fetchLibraryCollections(): Promise<LibraryCollectionInfo[]> {
+  return UI_CHANNEL.request(PLUGIN, "getLibraryCollections", []);
 }
 
 export async function fetchSelectionPairs(): Promise<{
@@ -44,6 +51,12 @@ export async function fetchPairs(
   payload: LoadPairsRequest
 ): Promise<VariablePair[]> {
   return UI_CHANNEL.request(PLUGIN, "loadPairs", [payload]);
+}
+
+export async function fetchLibraryPairs(
+  payload: LoadLibraryPairsRequest
+): Promise<VariablePair[]> {
+  return UI_CHANNEL.request(PLUGIN, "loadLibraryPairs", [payload]);
 }
 
 export async function createPair(

@@ -1,4 +1,4 @@
-import { VariableCollectionInfo } from "@common/types";
+import { LibraryCollectionInfo, VariableCollectionInfo } from "@common/types";
 import { Button } from "@ui/components/Button";
 import { SectionHeader } from "@ui/components/SectionHeader";
 import { Select } from "@ui/components/Select";
@@ -24,6 +24,10 @@ type Props = {
   selectedCollection: VariableCollectionInfo | null;
   hasEnoughModes: boolean;
   selectionLocked: boolean;
+  readOnly: boolean;
+  libraryCollections: LibraryCollectionInfo[];
+  selectedLibraryCollectionKey: string | null;
+  onLibraryCollectionChange: (key: string | null) => void;
 };
 
 export function SettingsPage({
@@ -41,6 +45,10 @@ export function SettingsPage({
   selectedCollection,
   hasEnoughModes,
   selectionLocked,
+  readOnly,
+  libraryCollections,
+  selectedLibraryCollectionKey,
+  onLibraryCollectionChange,
 }: Props) {
   const currentModes = selectedCollection?.modes ?? [];
   const showMappingBlocker = selectedCollection ? !hasEnoughModes : false;
@@ -72,84 +80,107 @@ export function SettingsPage({
         }
       />
       <div className={styles.selectorGrid}>
-        <div>
-          <div className={styles.label}>
-            Collection
+        {readOnly ? (
+          <div>
+            <div className={styles.label}>Design system library</div>
+            <Select
+              value={selectedLibraryCollectionKey ?? ""}
+              onChange={(event) =>
+                onLibraryCollectionChange(event.target.value || null)
+              }
+            >
+              <option value="">Select a library collection</option>
+              {libraryCollections.map((collection) => (
+                <option key={collection.key} value={collection.key}>
+                  {collection.libraryName} / {collection.name}
+                </option>
+              ))}
+            </Select>
           </div>
-          <Select
-            value={collectionId ?? ""}
-            onChange={(event) => {
-              onChange({ collectionId: event.target.value || null });
-            }}
-            disabled={selectionLocked}
-          >
-            <option value="">Select a collection</option>
-            {collections.map((collection) => (
-              <option key={collection.id} value={collection.id}>
-                {collection.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-        <div>
-          <div className={styles.label}>Group (optional)</div>
-          <Select
-            value={groupId ?? ""}
-            onChange={(event) => {
-              onChange({ groupId: event.target.value || null });
-            }}
-            disabled={
-              selectionLocked ||
-              !selectedCollection
-            }
-          >
-            <option value="">All groups</option>
-            {(selectedCollection?.groups ?? []).map((group) => (
-              <option key={group.id} value={group.id}>
-                {group.name}
-              </option>
-            ))}
-          </Select>
-        </div>
-      </div>
-      <div className={styles.modeAssignment}>
-        <div className={styles.label}>Assign each mode</div>
-        <div className={styles.modeRows}>
-          {currentModes.map((mode) => {
-            const owner = sfSet.has(mode.modeId)
-              ? "sf"
-              : matSet.has(mode.modeId)
-              ? "material"
-              : "none";
-            return (
-              <div key={mode.modeId} className={styles.modeRow}>
-                <div className={styles.modeName}>{mode.name}</div>
-                <label className={styles.modeChoice}>
-                  <input
-                    type="radio"
-                    name={`mode-${mode.modeId}`}
-                    checked={owner === "sf"}
-                    onChange={() => assignMode(mode.modeId, "sf")}
-                    disabled={selectionLocked}
-                  />
-                  SF
-                </label>
-                <label className={styles.modeChoice}>
-                  <input
-                    type="radio"
-                    name={`mode-${mode.modeId}`}
-                    checked={owner === "material"}
-                    onChange={() => assignMode(mode.modeId, "material")}
-                    disabled={selectionLocked}
-                  />
-                  Material
-                </label>
+        ) : (
+          <>
+            <div>
+              <div className={styles.label}>
+                Collection
               </div>
-            );
-          })}
-        </div>
+              <Select
+                value={collectionId ?? ""}
+                onChange={(event) => {
+                  onChange({ collectionId: event.target.value || null });
+                }}
+                disabled={selectionLocked}
+              >
+                <option value="">Select a collection</option>
+                {collections.map((collection) => (
+                  <option key={collection.id} value={collection.id}>
+                    {collection.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+            <div>
+              <div className={styles.label}>Group (optional)</div>
+              <Select
+                value={groupId ?? ""}
+                onChange={(event) => {
+                  onChange({ groupId: event.target.value || null });
+                }}
+                disabled={
+                  selectionLocked ||
+                  !selectedCollection
+                }
+              >
+                <option value="">All groups</option>
+                {(selectedCollection?.groups ?? []).map((group) => (
+                  <option key={group.id} value={group.id}>
+                    {group.name}
+                  </option>
+                ))}
+              </Select>
+            </div>
+          </>
+        )}
       </div>
-      {showMappingBlocker ? (
+      {!readOnly ? (
+        <div className={styles.modeAssignment}>
+          <div className={styles.label}>Assign each mode</div>
+          <div className={styles.modeRows}>
+            {currentModes.map((mode) => {
+              const owner = sfSet.has(mode.modeId)
+                ? "sf"
+                : matSet.has(mode.modeId)
+                ? "material"
+                : "none";
+              return (
+                <div key={mode.modeId} className={styles.modeRow}>
+                  <div className={styles.modeName}>{mode.name}</div>
+                  <label className={styles.modeChoice}>
+                    <input
+                      type="radio"
+                      name={`mode-${mode.modeId}`}
+                      checked={owner === "sf"}
+                      onChange={() => assignMode(mode.modeId, "sf")}
+                      disabled={selectionLocked}
+                    />
+                    SF
+                  </label>
+                  <label className={styles.modeChoice}>
+                    <input
+                      type="radio"
+                      name={`mode-${mode.modeId}`}
+                      checked={owner === "material"}
+                      onChange={() => assignMode(mode.modeId, "material")}
+                      disabled={selectionLocked}
+                    />
+                    Material
+                  </label>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : null}
+      {!readOnly && showMappingBlocker ? (
         <div className={styles.banner}>
           The selected collection needs at least two modes. Add more modes or pick a different collection.
         </div>

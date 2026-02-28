@@ -1,7 +1,10 @@
-import { buildPairDescription, parsePairDescription } from "@common/description";
+import { parsePairDescription } from "@common/description";
 import { PLUGIN, UI } from "@common/networkSides";
 import {
   CreatePairRequest,
+  IconPairDescription,
+  LibraryCollectionInfo,
+  LoadLibraryPairsRequest,
   LoadPairsRequest,
   MappingState,
   UpdatePairRequest,
@@ -11,8 +14,10 @@ import {
 } from "@common/types";
 
 const GROUP_PLUGIN_DATA_KEY = "variableGroupId";
-const MAPPING_STATE_KEY = "mappingState";
 const PLUGIN_DATA_KEY = "ipairs"; // compact key to stay within plugin data limits
+const HARDCODED_LIBRARY_COLLECTION_KEY =
+  "bfa1827c219b14613541995a265ff542ea795e05";
+let readOnlyStartupLogged = false;
 
 const log = (...args: any[]) => {
   try {
@@ -106,6 +111,65 @@ async function listCollections(): Promise<VariableCollectionInfo[]> {
   });
 }
 
+function resolveCanWrite(localCollectionsCount: number): boolean {
+  if (figma.editorType !== "figma") return false;
+  if (isDevRuntime()) return false;
+  return localCollectionsCount > 0;
+}
+
+function isDevRuntime(): boolean {
+  return (
+    figma.editorType === "dev" ||
+    (figma as any).mode === "dev" ||
+    (figma as any).mode === "code" ||
+    (figma as any).isInDevMode === true ||
+    (figma as any).devMode === true
+  );
+}
+
+export async function isSourceWriteMode(): Promise<boolean> {
+  const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+  return resolveCanWrite(localCollections.length);
+}
+
+async function listLibraryCollections(): Promise<LibraryCollectionInfo[]> {
+  const teamLibrary = (figma as any).teamLibrary;
+  if (!teamLibrary?.getAvailableLibraryVariableCollectionsAsync) {
+    return [];
+  }
+  const collections = await teamLibrary.getAvailableLibraryVariableCollectionsAsync();
+  return collections.map((collection: any) => ({
+    key: String(collection.key),
+    name: String(collection.name ?? collection.key),
+    libraryName: String(
+      collection.libraryName ?? collection.library ?? collection.publisherName ?? "Library"
+    ),
+  }));
+}
+
+async function logReadOnlyStartupSelection() {
+  if (readOnlyStartupLogged) return;
+  readOnlyStartupLogged = true;
+  try {
+    const collections = await listLibraryCollections();
+    const selectedCollection =
+      collections.find(
+        (collection) => collection.key === HARDCODED_LIBRARY_COLLECTION_KEY
+      ) ?? null;
+
+    log("readOnlyStartupSelection", {
+      persistedLibraryCollectionKey: null,
+      hardcodedLibraryCollectionKey: HARDCODED_LIBRARY_COLLECTION_KEY,
+      matchedCollectionKey: selectedCollection?.key ?? null,
+      matchedCollectionName: selectedCollection?.name ?? null,
+      matchedLibraryName: selectedCollection?.libraryName ?? null,
+      availableLibraryCollectionCount: collections.length,
+    });
+  } catch (err) {
+    log("readOnlyStartupSelection:error", String((err as any)?.message ?? err));
+  }
+}
+
 function ensureModes(
   collection: VariableCollection,
   sfModeIds: string[],
@@ -182,6 +246,76 @@ function nameHasGroupPrefix(name: string, groupId: string): boolean {
   return false;
 }
 
+function normalizeToken(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function tokenize(value: string): string[] {
+  return value
+    .split(/[._/\-\s]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+}
+
+function buildKeywordDescription(
+  sf: Pick<CreatePairRequest["sf"], "name" | "categories" | "searchTerms">,
+  material: Pick<CreatePairRequest["material"], "name" | "categories" | "tags">
+): string {
+  const keywords = new Set<string>();
+  const sources = [
+    ...sf.searchTerms,
+    ...sf.categories,
+    ...tokenize(sf.name),
+    ...material.tags,
+    ...material.categories,
+    ...tokenize(material.name),
+  ];
+
+  for (const source of sources) {
+    const normalized = normalizeToken(String(source ?? ""));
+    if (normalized) keywords.add(normalized);
+  }
+
+  return Array.from(keywords).join(", ");
+}
+
+function sanitizeSfLabel(sfName: string): string {
+  return sfName
+    .replace(/\./g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildVariableLeaf(sfGlyph: string, sfName: string, materialName: string): string {
+  return `${sfGlyph} ${sanitizeSfLabel(sfName)}__${materialName.trim()}`;
+}
+
+function parsePairFromVariableName(name: string): IconPairDescription | null {
+  const rawName = name || "";
+  const leaf = rawName.split("/").filter(Boolean).pop() || rawName;
+  const delimiterIndex = leaf.indexOf("__");
+  if (delimiterIndex < 0) return null;
+
+  const left = leaf.slice(0, delimiterIndex).trim();
+  const materialName = leaf.slice(delimiterIndex + 2).trim();
+  if (!left || !materialName) return null;
+
+  const chars = Array.from(left);
+  const sfGlyph = chars[0] || "";
+  const sfLabel = chars.slice(1).join("").trim();
+  if (!sfGlyph || !sfLabel) return null;
+
+  return {
+    sfName: sfLabel,
+    sfGlyph,
+    sfCategories: [],
+    sfSearchTerms: [],
+    materialName,
+    materialCategories: [],
+    materialTags: [],
+  };
+}
+
 function serializePair(
   variable: Variable,
   sfModeIds: string[],
@@ -198,14 +332,19 @@ function serializePair(
     materialModeId && typeof values[materialModeId] === "string"
       ? (values[materialModeId] as string)
       : null;
+  const description = variable.description ?? "";
+  const descriptionFields =
+    parsePairFromVariableName(variable.name || "") ||
+    parsePairDescription(description) ||
+    null;
 
   return {
     id: variable.id,
     name: variable.name,
     collectionId: variable.variableCollectionId,
     groupId: readVariableGroupId(variable),
-    description: variable.description ?? "",
-    descriptionFields: parsePairDescription(variable.description ?? ""),
+    description,
+    descriptionFields,
     sfValue,
     materialValue,
   };
@@ -218,6 +357,7 @@ type PluginDataPair = {
   c: number; // created
   u: number; // updated
 };
+
 
 function readStoredPairs(): Map<string, PluginDataPair> {
   try {
@@ -259,6 +399,7 @@ function compactValue(valuesByMode: Variable["valuesByMode"]): string {
   return "";
 }
 
+
 function persistPairsToPluginData(pairs: PluginDataPair[], reason: string) {
   const payload = {
     v: 1,
@@ -281,10 +422,12 @@ export async function snapshotPairsPluginData() {
   const now = Date.now();
   const variables = await figma.variables.getLocalVariablesAsync("STRING");
   const pairs: PluginDataPair[] = variables.map((variable) => {
-    const desc = parsePairDescription(variable.description ?? "") || null;
-    const sfName = desc?.sfName || variable.name || "";
-    const matName =
-      desc?.materialName || compactValue(variable.valuesByMode) || "";
+    const parsed =
+      parsePairFromVariableName(variable.name || "") ||
+      parsePairDescription(variable.description ?? "") ||
+      null;
+    const sfName = parsed?.sfName || variable.name || "";
+    const matName = parsed?.materialName || compactValue(variable.valuesByMode) || "";
     const prev = stored.get(variable.id);
     return {
       id: variable.id,
@@ -300,9 +443,12 @@ export async function snapshotPairsPluginData() {
 async function upsertPairPluginData(variable: Variable) {
   const stored = readStoredPairs();
   const now = Date.now();
-  const desc = parsePairDescription(variable.description ?? "") || null;
-  const sfName = desc?.sfName || variable.name || "";
-  const matName = desc?.materialName || compactValue(variable.valuesByMode) || "";
+  const parsed =
+    parsePairFromVariableName(variable.name || "") ||
+    parsePairDescription(variable.description ?? "") ||
+    null;
+  const sfName = parsed?.sfName || variable.name || "";
+  const matName = parsed?.materialName || compactValue(variable.valuesByMode) || "";
   const prev = stored.get(variable.id);
   stored.set(variable.id, {
     id: variable.id,
@@ -314,9 +460,9 @@ async function upsertPairPluginData(variable: Variable) {
   persistPairsToPluginData(Array.from(stored.values()), "upsert");
 }
 
-async function removePairPluginData(variableId: string) {
+async function removePairPluginData(variable: Variable) {
   const stored = readStoredPairs();
-  stored.delete(variableId);
+  stored.delete(variable.id);
   persistPairsToPluginData(Array.from(stored.values()), "remove");
 }
 
@@ -338,16 +484,19 @@ PLUGIN_CHANNEL.registerMessageHandler("ping", () => {
 });
 
 PLUGIN_CHANNEL.registerMessageHandler("getEnvironment", async () => {
-  const isDevMode =
-    figma.editorType === "dev" ||
-    (figma as any).mode === "dev" ||
-    (figma as any).mode === "code" ||
-    (figma as any).isInDevMode === true ||
-    (figma as any).devMode === true;
+  const isDevMode = isDevRuntime();
   const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
-  const isLibraryFile = localCollections.length > 0;
-  log("getEnvironment", { editorType: figma.editorType, isDevMode });
-  return { isDevMode, isLibraryFile };
+  const canWrite = resolveCanWrite(localCollections.length);
+  if (isDevMode || !canWrite) {
+    await logReadOnlyStartupSelection();
+  }
+  log("getEnvironment", { editorType: figma.editorType, isDevMode, canWrite });
+  return { isDevMode, canWrite };
+});
+
+PLUGIN_CHANNEL.registerMessageHandler("getLibraryCollections", async () => {
+  log("getLibraryCollections");
+  return listLibraryCollections();
 });
 
 function extractIds(binding: any): string[] {
@@ -507,36 +656,19 @@ PLUGIN_CHANNEL.registerMessageHandler("getCollections", async () => {
 
 PLUGIN_CHANNEL.registerMessageHandler("loadMappingState", async () => {
   log("loadMappingState");
-  const state = await figma.clientStorage.getAsync(MAPPING_STATE_KEY);
-  if (!state) {
-    return {
-      collectionId: null,
-      groupId: null,
-      sfModeIds: [],
-      materialModeIds: [],
-    } satisfies MappingState;
-  }
-  const anyState: any = state;
-  const migrateIds = (value: any) => {
-    if (Array.isArray(value)) return value.filter((v) => typeof v === "string");
-    if (typeof value === "string") return value ? [value] : [];
-    return [];
-  };
   return {
-    collectionId: anyState.collectionId ?? null,
-    groupId: anyState.groupId ?? null,
-    sfModeIds: migrateIds(anyState.sfModeIds ?? anyState.sfModeId),
-    materialModeIds: migrateIds(
-      anyState.materialModeIds ?? anyState.materialModeId
-    ),
+    collectionId: null,
+    groupId: null,
+    sfModeIds: [],
+    materialModeIds: [],
+    libraryCollectionKey: HARDCODED_LIBRARY_COLLECTION_KEY,
   } satisfies MappingState;
 });
 
 PLUGIN_CHANNEL.registerMessageHandler(
   "saveMappingState",
-  async (state: MappingState) => {
-    log("saveMappingState", state);
-    await figma.clientStorage.setAsync(MAPPING_STATE_KEY, state);
+  async (_state: MappingState) => {
+    log("saveMappingState:ignored");
   }
 );
 
@@ -565,19 +697,71 @@ PLUGIN_CHANNEL.registerMessageHandler(
 );
 
 PLUGIN_CHANNEL.registerMessageHandler(
+  "loadLibraryPairs",
+  async (payload: LoadLibraryPairsRequest) => {
+    const effectiveLibraryCollectionKey = HARDCODED_LIBRARY_COLLECTION_KEY;
+    log("loadLibraryPairs", {
+      requestedLibraryCollectionKey: payload.libraryCollectionKey,
+      effectiveLibraryCollectionKey,
+    });
+    const teamLibrary = (figma as any).teamLibrary;
+    if (!teamLibrary?.getVariablesInLibraryCollectionAsync) {
+      throw new Error("Team library API is not available in this file.");
+    }
+    const descriptors = await teamLibrary.getVariablesInLibraryCollectionAsync(
+      effectiveLibraryCollectionKey
+    );
+    const stringDescriptors = (Array.isArray(descriptors) ? descriptors : []).filter(
+      (descriptor: any) => descriptor?.resolvedType === "STRING"
+    );
+    log("loadLibraryPairs:stringDescriptorCount", stringDescriptors.length);
+    log(
+      "loadLibraryPairs:stringDescriptorNames",
+      stringDescriptors.map((descriptor: any) => String((descriptor as any).name ?? ""))
+    );
+
+    const pairs: VariablePair[] = [];
+    for (const descriptor of stringDescriptors) {
+      const rawName = String((descriptor as any).name ?? "");
+      const fields = parsePairFromVariableName(rawName);
+      if (!fields) continue;
+      const key = String((descriptor as any).key ?? "");
+      pairs.push({
+        id: key ? `LibraryVariable:${key}` : rawName,
+        name: rawName,
+        collectionId: effectiveLibraryCollectionKey,
+        groupId: null,
+        description: "",
+        descriptionFields: fields,
+        sfValue: fields.sfGlyph || null,
+        materialValue: fields.materialName || null,
+      });
+    }
+
+    log("loadLibraryPairs:parsedPairCount", pairs.length);
+    return pairs;
+  }
+);
+
+PLUGIN_CHANNEL.registerMessageHandler(
   "createPair",
   async (payload: CreatePairRequest) => {
     log("createPair", payload);
-    if (figma.editorType !== "figma") {
-      throw new Error("Variables are only supported in Figma files.");
+    const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+    if (!resolveCanWrite(localCollections.length)) {
+      throw new Error("This file is read-only. Open the source variable file to edit pairs.");
     }
     const collection = await ensureCollection(payload.collectionId);
     ensureModes(collection, payload.sfModeIds, payload.materialModeIds);
 
     const variable = figma.variables.createVariable(
       payload.groupId
-        ? `${payload.groupId}/${payload.sf.symbol}`
-        : payload.sf.symbol,
+        ? `${payload.groupId}/${buildVariableLeaf(
+            payload.sf.symbol,
+            payload.sf.name,
+            payload.material.name
+          )}`
+        : buildVariableLeaf(payload.sf.symbol, payload.sf.name, payload.material.name),
       collection,
       "STRING"
     );
@@ -590,7 +774,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
     payload.materialModeIds.forEach((modeId) =>
       variable.setValueForMode(modeId, payload.material.name)
     );
-    variable.description = buildPairDescription(payload.sf, payload.material);
+    variable.description = buildKeywordDescription(payload.sf, payload.material);
 
     log("createPair variable configured", {
       id: variable.id,
@@ -605,6 +789,10 @@ PLUGIN_CHANNEL.registerMessageHandler(
   "updatePair",
   async (payload: UpdatePairRequest) => {
     log("updatePair", payload);
+    const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+    if (!resolveCanWrite(localCollections.length)) {
+      throw new Error("This file is read-only. Open the source variable file to edit pairs.");
+    }
     const variable = await figma.variables.getVariableByIdAsync(
       payload.variableId
     );
@@ -629,15 +817,19 @@ PLUGIN_CHANNEL.registerMessageHandler(
     applyVariableGroup(variable, targetGroup);
 
     variable.name = targetGroup
-      ? `${targetGroup}/${payload.sf.symbol}`
-      : payload.sf.symbol;
+      ? `${targetGroup}/${buildVariableLeaf(
+          payload.sf.symbol,
+          payload.sf.name,
+          payload.material.name
+        )}`
+      : buildVariableLeaf(payload.sf.symbol, payload.sf.name, payload.material.name);
     payload.sfModeIds.forEach((modeId) =>
       variable.setValueForMode(modeId, payload.sf.symbol)
     );
     payload.materialModeIds.forEach((modeId) =>
       variable.setValueForMode(modeId, payload.material.name)
     );
-    variable.description = buildPairDescription(payload.sf, payload.material);
+    variable.description = buildKeywordDescription(payload.sf, payload.material);
     variable.scopes = ["TEXT_CONTENT"];
 
     await upsertPairPluginData(variable);
@@ -647,8 +839,12 @@ PLUGIN_CHANNEL.registerMessageHandler(
 
 PLUGIN_CHANNEL.registerMessageHandler("deletePair", async (variableId) => {
   log("deletePair", { variableId });
+  const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+  if (!resolveCanWrite(localCollections.length)) {
+    throw new Error("This file is read-only. Open the source variable file to edit pairs.");
+  }
   const variable = await figma.variables.getVariableByIdAsync(variableId);
   if (!variable) return;
   variable.remove();
-  await removePairPluginData(variableId);
+  await removePairPluginData(variable);
 });

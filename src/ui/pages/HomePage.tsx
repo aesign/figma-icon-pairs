@@ -1,4 +1,5 @@
 import { VariablePair } from "@common/types";
+import sfDataset from "@common/sf.json";
 import { Button } from "@ui/components/Button";
 import { PairCard } from "@ui/components/PairCard";
 import { SectionHeader } from "@ui/components/SectionHeader";
@@ -14,6 +15,7 @@ type Props = {
   mappingComplete: boolean;
   selectionActive: boolean;
   isDevMode: boolean;
+  readOnly: boolean;
   onSearch: (value: string) => void;
   searchValue: string;
   onEdit: (pair: VariablePair) => void;
@@ -29,6 +31,7 @@ export function HomePage({
   mappingComplete,
   selectionActive,
   isDevMode,
+  readOnly,
   onSearch,
   searchValue,
   onEdit,
@@ -113,8 +116,22 @@ export function HomePage({
   }, [mappingComplete]);
 
   const filteredPairs = pairs ?? [];
+  const sfNameByGlyph = useMemo(() => {
+    const map = new Map<string, string>();
+    const symbols = ((sfDataset as any)?.symbols ?? []) as Array<any>;
+    for (const symbol of symbols) {
+      if (typeof symbol?.symbol !== "string") continue;
+      if (typeof symbol?.name !== "string") continue;
+      map.set(symbol.symbol, symbol.name);
+    }
+    return map;
+  }, []);
   const exportPairs = filteredPairs.map((pair) => ({
-    sf: pair.descriptionFields?.sfName || pair.name || pair.sfValue || "",
+    id: pair.id,
+    sf:
+      sfNameByGlyph.get(
+        pair.descriptionFields?.sfGlyph || pair.sfValue || ""
+      ) || "",
     material:
       pair.descriptionFields?.materialName || pair.materialValue || "",
   }));
@@ -146,27 +163,31 @@ export function HomePage({
         // title="Pairs"
         actions={
           <>
-            <Button
-              variant="secondary"
-              icon="download"
-              onClick={handleExport}
-              disabled={loading || !mappingComplete}
-            />
-            {!isDevMode ? (
-              <>
+            {!readOnly ? (
+              <Button
+                variant="secondary"
+                icon="download"
+                onClick={handleExport}
+                disabled={loading || !mappingComplete}
+              />
+            ) : null}
+            <>
+              {!isDevMode && !readOnly ? (
                 <Button
                   variant="primary"
                   onClick={() => onCreate(searchValue)}
                   disabled={!mappingComplete}
                   icon="add"
                 />
+              ) : null}
+              {!isDevMode && !readOnly ? (
                 <Button
                   variant="secondary"
                   onClick={onOpenSettings}
                   icon="settings"
                 />
-              </>
-            ) : null}
+              ) : null}
+            </>
           </>
         }
       >
@@ -183,12 +204,16 @@ export function HomePage({
       ) : !mappingComplete ? (
         <EmptyState
           title={
-            isDevMode
+            readOnly
+              ? "Select a design system"
+              : isDevMode
               ? "Settings hidden in Dev Mode"
               : "Select collection and modes"
           }
           subtitle={
-            isDevMode
+            readOnly
+              ? "Design system is fixed in this mode."
+              : isDevMode
               ? "Open the plugin in Design mode to configure collection and modes."
               : "Open Settings to pick a collection and two modes to sync pairs."
           }
@@ -209,6 +234,8 @@ export function HomePage({
               ? "Try another keyword."
               : isDevMode
               ? "Switch to Design mode to create pairs."
+              : readOnly
+              ? "Try another library collection."
               : "Create a pair to get started."
           }
         >
@@ -216,7 +243,7 @@ export function HomePage({
             <Button variant="secondary" onClick={onClearSelection}>
               Clear selection
             </Button>
-          ) : !isDevMode ? (
+          ) : !isDevMode && !readOnly ? (
             <Button
               variant="primary"
               icon="add"
@@ -240,7 +267,7 @@ export function HomePage({
                 pair={pair}
                 onEdit={onEdit}
                 onDelete={onDelete}
-                showActions={!isDevMode}
+                showActions={!isDevMode && !readOnly}
                 onSfGlyphClick={async () => {
                   if (copying) return;
                   setCopying(true);

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { MappingState } from "@common/types";
 import { loadMappingState, saveMappingState } from "@ui/services/pluginApi";
 import { formatError } from "@ui/utils/errors";
@@ -16,6 +16,7 @@ const EMPTY_MAPPING: MappingState = {
   groupId: null,
   sfModeIds: [],
   materialModeIds: [],
+  libraryCollectionKey: null,
 };
 
 export function useMappingState(): UseMappingStateResult {
@@ -52,9 +53,9 @@ export function useMappingState(): UseMappingStateResult {
     );
   }, [mapping]);
 
-  const setMapping = (state: Partial<MappingState>) => {
+  const setMapping = useCallback((state: Partial<MappingState>) => {
     setMappingState((prev) => ({ ...prev, ...state }));
-  };
+  }, []);
 
   return { mapping, setMapping, mappingComplete, mappingLoaded, error };
 }

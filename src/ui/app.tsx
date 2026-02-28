@@ -1,6 +1,7 @@
 import { filterRoundedMaterialIcons, MATERIAL_UNSUPPORTED_FAMILIES } from "@common/material";
 import {
   CreatePairRequest,
+  LibraryCollectionInfo,
   MaterialIcon,
   SfSymbol,
   UpdatePairRequest,
@@ -16,6 +17,8 @@ import { HomePage } from "@ui/pages/HomePage";
 import { SettingsPage } from "@ui/pages/SettingsPage";
 import {
   fetchEnvironment,
+  fetchLibraryCollections,
+  fetchLibraryPairs,
   fetchCollections,
   fetchSelectionPairs,
   clearSelection as clearSelectionApi,
@@ -127,10 +130,17 @@ function App() {
   const [collections, setCollections] = useState<VariableCollectionInfo[]>([]);
   const [collectionsLoaded, setCollectionsLoaded] = useState(false);
   const [isDevMode, setIsDevMode] = useState(false);
+  const [canWrite, setCanWrite] = useState(true);
+  const [libraryCollections, setLibraryCollections] = useState<LibraryCollectionInfo[]>(
+    []
+  );
+  const [libraryPairs, setLibraryPairs] = useState<VariablePair[]>([]);
+  const [libraryPairsLoading, setLibraryPairsLoading] = useState(false);
   const [selectionPairIds, setSelectionPairIds] = useState<string[] | null>(
     null
   );
   const [selectionFilterActive, setSelectionFilterActive] = useState(false);
+  const readOnlyMode = isDevMode || !canWrite;
 
   const selectedCollection = useMemo(
     () =>
@@ -139,6 +149,7 @@ function App() {
   );
   const hasEnoughModes = (selectedCollection?.modes?.length ?? 0) >= 2;
   const mappingReady = useMemo(() => {
+    if (readOnlyMode) return true;
     if (!selectedCollection) return false;
     const modeIds = selectedCollection.modes?.map((m) => m.modeId) ?? [];
     const sfSet = new Set(mapping.sfModeIds || []);
@@ -151,7 +162,8 @@ function App() {
       if (sf === mat) return false; // either both or none -> invalid
     }
     return true;
-  }, [mapping.sfModeIds, mapping.materialModeIds, selectedCollection]);
+  }, [readOnlyMode, mapping.sfModeIds, mapping.materialModeIds, selectedCollection]);
+  const readOnlyReady = readOnlyMode && Boolean(mapping.libraryCollectionKey);
   const selectionLocked = Boolean(editingPair);
 
   const {
@@ -168,7 +180,7 @@ function App() {
     groupId: mapping.groupId,
     sfModeIds: mapping.sfModeIds,
     materialModeIds: mapping.materialModeIds,
-    mappingComplete: mappingReady,
+    mappingComplete: !readOnlyMode && mappingReady,
   });
 
   useEffect(() => {
@@ -180,18 +192,10 @@ function App() {
   }, [pairsError]);
 
   useEffect(() => {
-    if (mappingLoaded && collectionsLoaded && !mappingReady) {
-      if (!isDevMode) {
-        setActivePage("settings");
-      }
+    if (mappingLoaded && collectionsLoaded && !readOnlyMode && !mappingReady) {
+      setActivePage("settings");
     }
-  }, [mappingLoaded, collectionsLoaded, mappingReady, isDevMode]);
-
-  useEffect(() => {
-    if (isDevMode) {
-      setActivePage("home");
-    }
-  }, [isDevMode]);
+  }, [mappingLoaded, collectionsLoaded, readOnlyMode, mappingReady]);
 
   useEffect(() => {
     const listener = (event: MessageEvent) => {
@@ -221,25 +225,62 @@ function App() {
     const loadCollections = async () => {
       try {
         const env = await fetchEnvironment();
-        const localResult = await fetchCollections();
-        setCollections(localResult);
-        setCollectionsLoaded(true);
+        setCanWrite(env.canWrite);
         setIsDevMode(env.isDevMode);
-        try {
-          const selectionInfo = await fetchSelectionPairs();
-          setSelectionPairIds(selectionInfo.pairIds);
-          setSelectionFilterActive(selectionInfo.selectionCount > 0);
-        } catch (err) {
-          console.warn("Unable to load selection pairs", err);
+        const nextReadOnlyMode = env.isDevMode || !env.canWrite;
+        if (!nextReadOnlyMode) {
+          const localResult = await fetchCollections();
+          setCollections(localResult);
+          try {
+            const selectionInfo = await fetchSelectionPairs();
+            setSelectionPairIds(selectionInfo.pairIds);
+            setSelectionFilterActive(selectionInfo.selectionCount > 0);
+          } catch (err) {
+            console.warn("Unable to load selection pairs", err);
+          }
+        } else {
+          const libraryResult = await fetchLibraryCollections();
+          setLibraryCollections(libraryResult);
+          if (
+            libraryResult.length === 1 &&
+            !mapping.libraryCollectionKey
+          ) {
+            setMapping({ libraryCollectionKey: libraryResult[0].key });
+          }
         }
+        setCollectionsLoaded(true);
       } catch (err) {
         setStatus(formatError(err));
       }
     };
     loadCollections();
-  }, []);
+  }, [mapping.libraryCollectionKey, setMapping]);
 
   useEffect(() => {
+    if (!readOnlyMode) return;
+    const selectedKey = mapping.libraryCollectionKey;
+    if (!selectedKey) {
+      setLibraryPairs([]);
+      return;
+    }
+    const loadLibraryData = async () => {
+      setLibraryPairsLoading(true);
+      try {
+        const pairs = await fetchLibraryPairs({
+          libraryCollectionKey: selectedKey,
+        });
+        setLibraryPairs(pairs);
+      } catch (err) {
+        setStatus(formatError(err));
+      } finally {
+        setLibraryPairsLoading(false);
+      }
+    };
+    loadLibraryData();
+  }, [readOnlyMode, mapping.libraryCollectionKey]);
+
+  useEffect(() => {
+    if (readOnlyMode) return;
     const exists = mapping.collectionId
       ? collections.some((c) => c.id === mapping.collectionId)
       : false;
@@ -256,7 +297,7 @@ function App() {
         materialModeIds: materialDefault,
       });
     }
-  }, [collections, mapping.collectionId, setMapping]);
+  }, [readOnlyMode, collections, mapping.collectionId, setMapping]);
 
   const availableCollections = useMemo(
     () =>
@@ -376,6 +417,26 @@ function App() {
     return source.filter((pair) => idSet.has(pair.id));
   }, [selectionFilterActive, selectionPairIds, filteredPairs, visiblePairs]);
 
+  const libraryFilteredPairs = useMemo(() => {
+    if (!readOnlyMode) return [];
+    if (!pairSearch.trim()) return libraryPairs;
+    const query = pairSearch.toLowerCase();
+    return libraryPairs.filter((pair) => {
+      const meta = pair.descriptionFields;
+      const text = [
+        pair.name,
+        pair.description,
+        meta?.sfName,
+        meta?.sfGlyph,
+        meta?.materialName,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return text.includes(query);
+    });
+  }, [readOnlyMode, pairSearch, libraryPairs]);
+
   const resetMapping = () => {
     setPairSearch("");
     setSelectedMaterial(null);
@@ -386,6 +447,7 @@ function App() {
       groupId: null,
       sfModeIds: [],
       materialModeIds: [],
+      libraryCollectionKey: null,
     });
   };
 
@@ -481,7 +543,7 @@ function App() {
     <div className={styles.app}>
       {status ? <div className={styles.status}>{status}</div> : null}
 
-      {activePage === "settings" && !isDevMode && (
+      {activePage === "settings" && !readOnlyMode && (
         <SettingsPage
           collections={availableCollections}
           collectionId={mapping.collectionId}
@@ -497,34 +559,41 @@ function App() {
           selectedCollection={selectedCollection}
           hasEnoughModes={hasEnoughModes}
           selectionLocked={selectionLocked}
+          readOnly={!canWrite}
+          libraryCollections={libraryCollections}
+          selectedLibraryCollectionKey={mapping.libraryCollectionKey}
+          onLibraryCollectionChange={(key) =>
+            setMapping({ libraryCollectionKey: key })
+          }
         />
       )}
 
       {activePage === "home" && (
         <div className={styles.grid}>
           <HomePage
-            pairs={selectionFilteredPairs}
-            loading={pairsLoading}
-            mappingComplete={mappingReady}
-            selectionActive={selectionFilterActive}
+            pairs={readOnlyMode ? libraryFilteredPairs : selectionFilteredPairs}
+            loading={readOnlyMode ? libraryPairsLoading : pairsLoading}
+            mappingComplete={readOnlyMode ? readOnlyReady : mappingReady}
+            selectionActive={readOnlyMode ? false : selectionFilterActive}
             isDevMode={isDevMode}
+            readOnly={readOnlyMode}
             onSearch={setPairSearch}
             searchValue={pairSearch}
             onEdit={(pair) => {
-              if (isDevMode) return;
+              if (readOnlyMode) return;
               startEdit(pair);
             }}
             onDelete={(pair) => {
-              if (isDevMode) return;
+              if (readOnlyMode) return;
               handleDelete(pair);
             }}
             onCreate={(initialSearch) => {
-              if (isDevMode) return;
+              if (readOnlyMode) return;
               setSearchQuery(initialSearch ?? "");
               setActivePage("create");
             }}
             onOpenSettings={() => {
-              if (isDevMode) return;
+              if (readOnlyMode) return;
               setActivePage("settings");
             }}
             onClearSelection={clearSelectionFilter}
@@ -532,7 +601,7 @@ function App() {
         </div>
       )}
 
-      {activePage === "create" && !isDevMode && (
+      {activePage === "create" && !readOnlyMode && (
         <CreatePage
           mappingComplete={mappingReady}
           hasEnoughModes={hasEnoughModes}
