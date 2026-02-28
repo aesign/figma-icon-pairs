@@ -100,3 +100,8 @@ export type SourceModeSettings = {
   sfModeIds: string[];
   materialModeIds: string[];
 };
+
+export type UserGroupSelection = {
+  collectionId: string;
+  groupId: string | null;
+};

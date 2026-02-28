@@ -7,12 +7,10 @@ import styles from "@ui/styles/App.module.scss";
 type Props = {
   collections: VariableCollectionInfo[];
   collectionId: string | null;
-  groupId: string | null;
   sfModeIds: string[];
   materialModeIds: string[];
   onChange: (state: {
     collectionId?: string | null;
-    groupId?: string | null;
     sfModeIds?: string[];
     materialModeIds?: string[];
   }) => void;
@@ -33,7 +31,6 @@ type Props = {
 export function SettingsPage({
   collections,
   collectionId,
-  groupId,
   sfModeIds,
   materialModeIds,
   onChange,
@@ -114,26 +111,6 @@ export function SettingsPage({
                 {collections.map((collection) => (
                   <option key={collection.id} value={collection.id}>
                     {collection.name}
-                  </option>
-                ))}
-              </Select>
-            </div>
-            <div>
-              <div className={styles.label}>Group (optional)</div>
-              <Select
-                value={groupId ?? ""}
-                onChange={(event) => {
-                  onChange({ groupId: event.target.value || null });
-                }}
-                disabled={
-                  selectionLocked ||
-                  !selectedCollection
-                }
-              >
-                <option value="">All groups</option>
-                {(selectedCollection?.groups ?? []).map((group) => (
-                  <option key={group.id} value={group.id}>
-                    {group.name}
                   </option>
                 ))}
               </Select>

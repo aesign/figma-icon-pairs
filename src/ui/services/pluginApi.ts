@@ -7,6 +7,7 @@ import {
   LoadPairsRequest,
   SourceModeSettings,
   UpdatePairRequest,
+  UserGroupSelection,
   VariableCollectionInfo,
   VariablePair,
 } from "@common/types";
@@ -47,6 +48,18 @@ export async function saveSourceModeSettings(
   settings: SourceModeSettings
 ): Promise<void> {
   await UI_CHANNEL.request(PLUGIN, "saveSourceModeSettings", [settings]);
+}
+
+export async function loadUserGroupSelections(): Promise<
+  Record<string, string | null>
+> {
+  return UI_CHANNEL.request(PLUGIN, "loadUserGroupSelections", []);
+}
+
+export async function saveUserGroupSelection(
+  selection: UserGroupSelection
+): Promise<void> {
+  await UI_CHANNEL.request(PLUGIN, "saveUserGroupSelection", [selection]);
 }
 
 export async function fetchPairs(

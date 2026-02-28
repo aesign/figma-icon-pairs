@@ -5,6 +5,7 @@ import { IconTile } from "@ui/components/IconTile";
 
 type Props = {
   pair: VariablePair;
+  sfDisplayName?: string;
   onEdit: (pair: VariablePair) => void;
   onDelete: (pair: VariablePair) => void;
   showActions?: boolean;
@@ -16,6 +17,7 @@ type Props = {
 
 export function PairCard({
   pair,
+  sfDisplayName,
   onEdit,
   onDelete,
   showActions = true,
@@ -25,7 +27,7 @@ export function PairCard({
   onMaterialNameClick,
 }: Props) {
   const meta = pair.descriptionFields;
-  const sfName = meta?.sfName || "Unknown SF name";
+  const sfName = sfDisplayName || meta?.sfName || "Unknown SF name";
 
   return (
     <div className={styles.pairCard}>

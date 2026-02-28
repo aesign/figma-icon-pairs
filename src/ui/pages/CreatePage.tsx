@@ -27,6 +27,7 @@ type Props = {
   onSubmit: () => void;
   submitting: boolean;
   editingPair: VariablePair | null;
+  selectedSubgroupName: string | null;
   onCancelEdit: () => void;
   onClose: () => void;
 };
@@ -49,6 +50,7 @@ export function CreatePage({
   onSubmit,
   submitting,
   editingPair,
+  selectedSubgroupName,
   onCancelEdit,
   onClose,
 }: Props) {
@@ -60,6 +62,11 @@ export function CreatePage({
     if (!mappingComplete || !hasEnoughModes) return;
     searchRef.current?.focus();
   }, [mappingComplete, hasEnoughModes]);
+
+  const ctaLabelBase = editingPair ? "Update pair" : "Create pair";
+  const ctaLabel = selectedSubgroupName
+    ? `${ctaLabelBase} in ${selectedSubgroupName}`
+    : ctaLabelBase;
 
   return (
     <section className={styles.section}>
@@ -219,7 +226,7 @@ export function CreatePage({
             !selectedMaterial
           }
         >
-          {editingPair ? "Update pair" : "Create pair"}
+          {ctaLabel}
         </Button>
       </div>
     </section>

@@ -8,6 +8,7 @@ import {
   LoadPairsRequest,
   SourceModeSettings,
   UpdatePairRequest,
+  UserGroupSelection,
   VariableCollectionInfo,
   VariableGroupInfo,
   VariablePair,
@@ -16,6 +17,7 @@ import {
 const GROUP_PLUGIN_DATA_KEY = "variableGroupId";
 const PLUGIN_DATA_KEY = "ipairs"; // compact key to stay within plugin data limits
 const SOURCE_MODE_SETTINGS_PLUGIN_DATA_KEY = "ipairsSourceSettings";
+const USER_GROUP_SELECTIONS_STORAGE_KEY = "ipairsUserGroupSelections";
 const HARDCODED_LIBRARY_COLLECTION_KEY =
   "bfa1827c219b14613541995a265ff542ea795e05";
 let readOnlyStartupLogged = false;
@@ -62,6 +64,13 @@ function normalizeGroup(raw: any): VariableGroupInfo | null {
   return { id: String(id), name: String(name ?? id) };
 }
 
+function isPairVariable(variable: Variable): boolean {
+  const parsedFromName = parsePairFromVariableName(variable.name || "");
+  if (parsedFromName) return true;
+  const parsedFromDescription = parsePairDescription(variable.description || "");
+  return Boolean(parsedFromDescription);
+}
+
 async function listCollections(): Promise<VariableCollectionInfo[]> {
   const collections = await figma.variables.getLocalVariableCollectionsAsync();
   const variables = await figma.variables.getLocalVariablesAsync("STRING");
@@ -69,6 +78,10 @@ async function listCollections(): Promise<VariableCollectionInfo[]> {
   return collections.map((collection) => {
     const collectionVariables = variables.filter(
       (variable) => variable.variableCollectionId === collection.id
+    );
+
+    const pairVariables = collectionVariables.filter((variable) =>
+      isPairVariable(variable)
     );
 
     const groupsRaw =
@@ -84,7 +97,7 @@ async function listCollections(): Promise<VariableCollectionInfo[]> {
 
     // Derive groups from variable names using slash-separated prefixes.
     const derivedGroups = new Map<string, VariableGroupInfo>();
-    for (const variable of collectionVariables) {
+    for (const variable of pairVariables) {
       const name = variable.name || "";
       const parts = name.split("/").filter(Boolean);
       for (let i = 1; i < parts.length; i++) {
@@ -95,9 +108,22 @@ async function listCollections(): Promise<VariableCollectionInfo[]> {
       }
     }
 
+    const pairGroupIds = new Set<string>();
+    for (const variable of pairVariables) {
+      const explicitGroupId = readVariableGroupId(variable);
+      if (explicitGroupId) pairGroupIds.add(explicitGroupId);
+      const parts = (variable.name || "").split("/").filter(Boolean);
+      for (let i = 1; i < parts.length; i++) {
+        pairGroupIds.add(parts.slice(0, i).join("/"));
+      }
+    }
+
     const mergedGroups = new Map<string, VariableGroupInfo>();
     for (const g of groups) mergedGroups.set(g.id, g);
     for (const g of derivedGroups.values()) mergedGroups.set(g.id, g);
+    const groupsWithPairs = Array.from(mergedGroups.values()).filter((group) =>
+      pairGroupIds.has(group.id)
+    );
 
     return {
       id: collection.id,
@@ -107,7 +133,7 @@ async function listCollections(): Promise<VariableCollectionInfo[]> {
         name: mode.name,
       })),
       defaultModeId: collection.defaultModeId,
-      groups: Array.from(mergedGroups.values()),
+      groups: groupsWithPairs,
     };
   });
 }
@@ -237,14 +263,29 @@ function applyVariableGroup(variable: Variable, groupId?: string | null) {
   }
 }
 
-function nameHasGroupPrefix(name: string, groupId: string): boolean {
-  if (!name || !groupId) return false;
-  const parts = name.split("/").filter(Boolean);
-  for (let i = 1; i < parts.length; i++) {
-    const prefix = parts.slice(0, i).join("/");
-    if (prefix === groupId) return true;
+function deriveGroupFromVariableName(name: string): string | null {
+  const parts = (name || "").split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  return parts.slice(0, -1).join("/");
+}
+
+function variableMatchesGroupFilter(variable: Variable, groupId: string): boolean {
+  if (!groupId) return true;
+  const isSubgroupFilter = groupId.includes("/");
+  const explicitGroupId = readVariableGroupId(variable);
+  const derivedGroupId = deriveGroupFromVariableName(variable.name || "");
+  const effectiveGroupId = explicitGroupId || derivedGroupId;
+  if (!effectiveGroupId) return false;
+
+  if (isSubgroupFilter) {
+    return (
+      effectiveGroupId === groupId ||
+      effectiveGroupId.startsWith(`${groupId}/`)
+    );
   }
-  return false;
+
+  // Top-level group filter matches only direct members, excluding subgroups.
+  return effectiveGroupId === groupId;
 }
 
 function normalizeToken(value: string): string {
@@ -437,6 +478,18 @@ function parseSourceModeSettings(raw: string): SourceModeSettings | null {
   } catch {
     return null;
   }
+}
+
+function parseUserGroupSelections(raw: unknown): Record<string, string | null> {
+  if (!raw || typeof raw !== "object") return {};
+  const source = raw as Record<string, unknown>;
+  const out: Record<string, string | null> = {};
+  for (const [collectionId, value] of Object.entries(source)) {
+    if (!collectionId) continue;
+    if (typeof value === "string") out[collectionId] = value;
+    else if (value === null) out[collectionId] = null;
+  }
+  return out;
 }
 
 export async function snapshotPairsPluginData() {
@@ -705,6 +758,27 @@ PLUGIN_CHANNEL.registerMessageHandler(
   }
 );
 
+PLUGIN_CHANNEL.registerMessageHandler("loadUserGroupSelections", async () => {
+  const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+  if (!resolveCanWrite(localCollections.length)) return {};
+  const raw = await figma.clientStorage.getAsync(USER_GROUP_SELECTIONS_STORAGE_KEY);
+  return parseUserGroupSelections(raw);
+});
+
+PLUGIN_CHANNEL.registerMessageHandler(
+  "saveUserGroupSelection",
+  async (selection: UserGroupSelection) => {
+    const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+    if (!resolveCanWrite(localCollections.length)) return;
+    if (!selection?.collectionId) return;
+
+    const raw = await figma.clientStorage.getAsync(USER_GROUP_SELECTIONS_STORAGE_KEY);
+    const map = parseUserGroupSelections(raw);
+    map[selection.collectionId] = selection.groupId ?? null;
+    await figma.clientStorage.setAsync(USER_GROUP_SELECTIONS_STORAGE_KEY, map);
+  }
+);
+
 PLUGIN_CHANNEL.registerMessageHandler(
   "loadPairs",
   async (payload: LoadPairsRequest) => {
@@ -716,9 +790,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
     const filtered = variables.filter((variable) => {
       if (variable.variableCollectionId !== payload.collectionId) return false;
       if (payload.groupId) {
-        const explicitGroup = readVariableGroupId(variable);
-        if (explicitGroup === payload.groupId) return true;
-        return nameHasGroupPrefix(variable.name || "", payload.groupId);
+        return variableMatchesGroupFilter(variable, payload.groupId);
       }
       return true;
     });

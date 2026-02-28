@@ -27,6 +27,8 @@ button {
   justify-content: space-between;
   gap: 12px;
   padding: 12px;
+  position: relative;
+  z-index: 40;
 }
 
 .sectionTitle {
@@ -41,6 +43,75 @@ button {
 .sectionActions {
   display: flex;
   gap: 8px;
+}
+
+.homeFilters {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.moreMenuWrap {
+  position: relative;
+}
+
+.filterMenuWrap {
+  position: relative;
+}
+
+.moreMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  min-width: 180px;
+  border: 1px solid var(--figma-color-border);
+  background: var(--figma-color-bg);
+  border-radius: 8px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+  z-index: 120;
+  padding: 4px;
+}
+
+.moreMenuItem {
+  width: 100%;
+  text-align: left;
+  padding: 7px 8px;
+  border-radius: 6px;
+  color: var(--figma-color-text);
+  background: transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.moreMenuItem:disabled {
+  cursor: not-allowed;
+  color: var(--figma-color-text-disabled);
+}
+
+.moreMenuItem:not(:disabled):hover {
+  background: var(--figma-color-bg-hover);
+}
+
+.moreMenuItemActive {
+  background: var(--figma-color-bg-selected);
+}
+
+.moreMenuCount {
+  color: var(--figma-color-text-secondary);
+  font-size: 11px;
+}
+
+.filterButtonActive {
+  color: var(--figma-color-bg-brand, #18a0fb);
+}
+
+.filterButtonNestedActive {
+  background: rgba(24, 160, 251, 0.2);
+  border-color: rgba(24, 160, 251, 0.45);
 }
 
 .selectorGrid {
@@ -307,7 +378,7 @@ button {
   color: var(--figma-color-text-secondary);
   background-color: var(--figma-color-bg);
   border-bottom: 1px solid var(--figma-color-border);
-  z-index: 10;
+  z-index: 3;
 }
 
 .pairHeader {

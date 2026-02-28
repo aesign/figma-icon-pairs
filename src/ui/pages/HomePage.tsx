@@ -1,4 +1,4 @@
-import { VariablePair } from "@common/types";
+import { VariableGroupInfo, VariablePair } from "@common/types";
 import sfDataset from "@common/sf.json";
 import { Button } from "@ui/components/Button";
 import { PairCard } from "@ui/components/PairCard";
@@ -6,6 +6,7 @@ import { SectionHeader } from "@ui/components/SectionHeader";
 import { Input } from "@ui/components/Input";
 import { EmptyState } from "@ui/components/EmptyState";
 import styles from "@ui/styles/App.module.scss";
+import { classes } from "@ui/utils/classes.util";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { notify } from "@ui/services/pluginApi";
 
@@ -16,6 +17,11 @@ type Props = {
   selectionActive: boolean;
   isDevMode: boolean;
   readOnly: boolean;
+  groupName: string | null;
+  groups: VariableGroupInfo[];
+  groupCounts: Record<string, number>;
+  selectedGroupId: string | null;
+  onGroupChange: (groupId: string | null) => void;
   onSearch: (value: string) => void;
   searchValue: string;
   onEdit: (pair: VariablePair) => void;
@@ -32,6 +38,11 @@ export function HomePage({
   selectionActive,
   isDevMode,
   readOnly,
+  groupName,
+  groups,
+  groupCounts,
+  selectedGroupId,
+  onGroupChange,
   onSearch,
   searchValue,
   onEdit,
@@ -41,7 +52,11 @@ export function HomePage({
   onClearSelection,
 }: Props) {
   const searchRef = useRef<HTMLInputElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
+  const filterMenuRef = useRef<HTMLDivElement>(null);
   const [copying, setCopying] = useState(false);
+  const [isMoreOpen, setIsMoreOpen] = useState(false);
+  const [isFilterOpen, setIsFilterOpen] = useState(false);
   const materialSvgs = useMemo(
     () =>
       import.meta.glob(
@@ -115,6 +130,20 @@ export function HomePage({
     searchRef.current?.focus();
   }, [mappingComplete]);
 
+  useEffect(() => {
+    if (!isMoreOpen && !isFilterOpen) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as Node | null;
+      if (!target) return;
+      if (moreMenuRef.current?.contains(target)) return;
+      if (filterMenuRef.current?.contains(target)) return;
+      setIsMoreOpen(false);
+      setIsFilterOpen(false);
+    };
+    window.addEventListener("mousedown", onPointerDown);
+    return () => window.removeEventListener("mousedown", onPointerDown);
+  }, [isMoreOpen, isFilterOpen]);
+
   const filteredPairs = pairs ?? [];
   const sfNameByGlyph = useMemo(() => {
     const map = new Map<string, string>();
@@ -135,6 +164,12 @@ export function HomePage({
     material:
       pair.descriptionFields?.materialName || pair.materialValue || "",
   }));
+
+  const getSfDisplayName = (pair: VariablePair): string => {
+    const glyph = pair.descriptionFields?.sfGlyph || pair.sfValue || "";
+    const raw = pair.descriptionFields?.sfName || pair.name || "";
+    return sfNameByGlyph.get(glyph) || raw.replace(/\s+/g, ".");
+  };
 
   const handleExport = async () => {
     try {
@@ -157,20 +192,22 @@ export function HomePage({
     }
   };
 
+  const exportLabel = `Export ${groupName ?? "current"} pairs`;
+  const searchPlaceholder = selectionActive
+    ? "Search pairs in selection..."
+    : selectedGroupId?.includes("/")
+    ? `Search ${groupName ?? selectedGroupId} pairs...`
+    : "Search all pairs...";
+  const addPairLabel = selectedGroupId?.includes("/")
+    ? `Add pair in ${groupName ?? selectedGroupId}`
+    : "Add pair";
+
   return (
     <section className={styles.section}>
       <SectionHeader
         // title="Pairs"
         actions={
           <>
-            {!readOnly ? (
-              <Button
-                variant="secondary"
-                icon="download"
-                onClick={handleExport}
-                disabled={loading || !mappingComplete}
-              />
-            ) : null}
             <>
               {!isDevMode && !readOnly ? (
                 <Button
@@ -181,23 +218,93 @@ export function HomePage({
                 />
               ) : null}
               {!isDevMode && !readOnly ? (
-                <Button
-                  variant="secondary"
-                  onClick={onOpenSettings}
-                  icon="settings"
-                />
+                <div className={styles.moreMenuWrap} ref={moreMenuRef}>
+                  <Button
+                    variant="secondary"
+                    onClick={() => setIsMoreOpen((prev) => !prev)}
+                    icon="more_horiz"
+                    aria-expanded={isMoreOpen}
+                    aria-haspopup="menu"
+                  />
+                  {isMoreOpen ? (
+                    <div className={styles.moreMenu} role="menu">
+                      <button
+                        type="button"
+                        className={styles.moreMenuItem}
+                        onClick={() => {
+                          setIsMoreOpen(false);
+                          handleExport();
+                        }}
+                        disabled={loading || !mappingComplete}
+                      >
+                        {exportLabel}
+                      </button>
+                      <button
+                        type="button"
+                        className={styles.moreMenuItem}
+                        onClick={() => {
+                          setIsMoreOpen(false);
+                          onOpenSettings();
+                        }}
+                      >
+                        Settings
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               ) : null}
             </>
           </>
         }
       >
-        <Input
-          placeholder={selectionActive ? "Search pairs in selection..." : "Search all pairs..."}
-          value={searchValue}
-          onChange={(event) => onSearch(event.target.value)}
-          disabled={!mappingComplete}
-          ref={searchRef}
-        />
+        <div className={styles.homeFilters}>
+          <Input
+            placeholder={searchPlaceholder}
+            value={searchValue}
+            onChange={(event) => onSearch(event.target.value)}
+            disabled={!mappingComplete}
+            ref={searchRef}
+          />
+          {!readOnly ? (
+            <div className={styles.filterMenuWrap} ref={filterMenuRef}>
+              <Button
+                variant="secondary"
+                onClick={() => setIsFilterOpen((prev) => !prev)}
+                icon="filter_list"
+                aria-expanded={isFilterOpen}
+                aria-haspopup="menu"
+                disabled={!mappingComplete || groups.length === 0}
+                className={classes(
+                  selectedGroupId?.includes("/") && styles.filterButtonActive,
+                  selectedGroupId?.includes("/") && styles.filterButtonNestedActive
+                )}
+              />
+              {isFilterOpen ? (
+                <div className={styles.moreMenu} role="menu">
+                  {groups.map((group) => (
+                    <button
+                      key={group.id}
+                      type="button"
+                      className={classes(
+                        styles.moreMenuItem,
+                        selectedGroupId === group.id && styles.moreMenuItemActive
+                      )}
+                      onClick={() => {
+                        setIsFilterOpen(false);
+                        onGroupChange(group.id);
+                      }}
+                    >
+                      <span>{group.name}</span>
+                      <span className={styles.moreMenuCount}>
+                        {groupCounts[group.id] ?? 0}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </SectionHeader>
       {loading ? (
         <div className={styles.empty}>Loading pairs…</div>
@@ -250,7 +357,7 @@ export function HomePage({
               onClick={() => onCreate(searchValue)}
               disabled={!mappingComplete}
             >
-              Add pair
+              {addPairLabel}
             </Button>
           ) : null}
         </EmptyState>
@@ -265,6 +372,7 @@ export function HomePage({
               <PairCard
                 key={pair.id}
                 pair={pair}
+                sfDisplayName={getSfDisplayName(pair)}
                 onEdit={onEdit}
                 onDelete={onDelete}
                 showActions={!isDevMode && !readOnly}
@@ -282,7 +390,7 @@ export function HomePage({
                   if (copying) return;
                   setCopying(true);
                   await copyText(
-                    pair.descriptionFields?.sfName || pair.name,
+                    getSfDisplayName(pair),
                     "Copied SF name to clipboard",
                     "Unable to copy SF name"
                   );

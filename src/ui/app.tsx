@@ -20,8 +20,11 @@ import {
   fetchLibraryCollections,
   fetchLibraryPairs,
   fetchCollections,
+  fetchPairs,
   loadSourceModeSettings,
   saveSourceModeSettings,
+  loadUserGroupSelections,
+  saveUserGroupSelection,
   fetchSelectionPairs,
   clearSelection as clearSelectionApi,
   createPair as createPairApi,
@@ -37,20 +40,71 @@ import styles from "@ui/styles/App.module.scss";
 
 type Page = "home" | "settings" | "create";
 
+function pickDefaultGroupId(
+  collection: VariableCollectionInfo | null | undefined
+): string | null {
+  const groups = collection?.groups ?? [];
+  if (groups.length === 0) return null;
+  const firstTopLevel = groups.find((group) => !group.id.includes("/"));
+  return firstTopLevel?.id ?? groups[0].id ?? null;
+}
+
+function pickGroupIdWithPreference(
+  collection: VariableCollectionInfo | null | undefined,
+  preferredGroupId: string | null | undefined
+): string | null {
+  const groups = collection?.groups ?? [];
+  if (groups.length === 0) return null;
+  if (
+    preferredGroupId &&
+    groups.some((group) => group.id === preferredGroupId)
+  ) {
+    return preferredGroupId;
+  }
+  return pickDefaultGroupId(collection);
+}
+
+function deriveGroupFromPairName(name: string): string | null {
+  const parts = (name || "").split("/").filter(Boolean);
+  if (parts.length < 2) return null;
+  return parts.slice(0, -1).join("/");
+}
+
+function pairMatchesGroupFilter(pair: VariablePair, groupId: string): boolean {
+  if (!groupId) return true;
+  const isSubgroupFilter = groupId.includes("/");
+  const effectiveGroupId = pair.groupId || deriveGroupFromPairName(pair.name || "");
+  if (!effectiveGroupId) return false;
+
+  if (isSubgroupFilter) {
+    return (
+      effectiveGroupId === groupId ||
+      effectiveGroupId.startsWith(`${groupId}/`)
+    );
+  }
+
+  // Top-level group filter matches only direct members, excluding subgroups.
+  return effectiveGroupId === groupId;
+}
+
 function deriveSfFromPair(
   pair: VariablePair,
   sfSymbols: SfSymbol[]
 ): SfSymbol | null {
   const meta = pair.descriptionFields;
+  const normalizeSfName = (value: string) =>
+    value.trim().replace(/\s+/g, ".");
   if (meta) {
     const fromName = sfSymbols.find((item) => item.name === meta.sfName);
     if (fromName) return fromName;
     const fromGlyph = sfSymbols.find((item) => item.symbol === meta.sfGlyph);
     if (fromGlyph) return fromGlyph;
     if (meta.sfGlyph || pair.sfValue) {
+      const glyph = meta.sfGlyph || pair.sfValue || "";
+      const canonical = sfSymbols.find((item) => item.symbol === glyph);
       return {
-        symbol: meta.sfGlyph || pair.sfValue || "",
-        name: meta.sfName || pair.name,
+        symbol: glyph,
+        name: canonical?.name || normalizeSfName(meta.sfName || pair.name),
         categories: meta.sfCategories ?? [],
         searchTerms: meta.sfSearchTerms ?? [],
       };
@@ -142,6 +196,12 @@ function App() {
     null
   );
   const [selectionFilterActive, setSelectionFilterActive] = useState(false);
+  const [userGroupSelections, setUserGroupSelections] = useState<
+    Record<string, string | null>
+  >({});
+  const [groupPairCounts, setGroupPairCounts] = useState<Record<string, number>>(
+    {}
+  );
   const readOnlyMode = isDevMode || !canWrite;
 
   const selectedCollection = useMemo(
@@ -149,6 +209,19 @@ function App() {
       collections.find((c) => c.id === mapping.collectionId) ?? null,
     [collections, mapping.collectionId]
   );
+  const selectedGroupName = useMemo(() => {
+    if (!selectedCollection || !mapping.groupId) return null;
+    return (
+      selectedCollection.groups.find((group) => group.id === mapping.groupId)
+        ?.name ?? mapping.groupId
+    );
+  }, [selectedCollection, mapping.groupId]);
+  const selectedSubgroupName = useMemo(() => {
+    if (!mapping.groupId?.includes("/")) return null;
+    const name = selectedGroupName ?? mapping.groupId;
+    const tail = name.split("/").filter(Boolean).pop();
+    return tail || name;
+  }, [mapping.groupId, selectedGroupName]);
   const hasEnoughModes = (selectedCollection?.modes?.length ?? 0) >= 2;
   const mappingReady = useMemo(() => {
     if (readOnlyMode) return true;
@@ -233,14 +306,24 @@ function App() {
         if (!nextReadOnlyMode) {
           const localResult = await fetchCollections();
           setCollections(localResult);
+          const groupSelections = await loadUserGroupSelections();
+          setUserGroupSelections(groupSelections);
           try {
             const sourceSettings = await loadSourceModeSettings();
             if (sourceSettings) {
+              const sourceCollection = localResult.find(
+                (collection) => collection.id === sourceSettings.collectionId
+              );
               setMapping({
                 collectionId: sourceSettings.collectionId,
                 sfModeIds: sourceSettings.sfModeIds,
                 materialModeIds: sourceSettings.materialModeIds,
-                groupId: null,
+                groupId: pickGroupIdWithPreference(
+                  sourceCollection,
+                  sourceSettings.collectionId
+                    ? groupSelections[sourceSettings.collectionId]
+                    : null
+                ),
               });
             }
           } catch (err) {
@@ -273,6 +356,29 @@ function App() {
 
   useEffect(() => {
     if (readOnlyMode || !collectionsLoaded) return;
+    if (!mapping.collectionId) return;
+    const previous = userGroupSelections[mapping.collectionId];
+    if ((previous ?? null) === (mapping.groupId ?? null)) return;
+    setUserGroupSelections((prev) => ({
+      ...prev,
+      [mapping.collectionId as string]: mapping.groupId ?? null,
+    }));
+    saveUserGroupSelection({
+      collectionId: mapping.collectionId,
+      groupId: mapping.groupId ?? null,
+    }).catch((err) => {
+      console.warn("Unable to save user group selection", err);
+    });
+  }, [
+    readOnlyMode,
+    collectionsLoaded,
+    mapping.collectionId,
+    mapping.groupId,
+    userGroupSelections,
+  ]);
+
+  useEffect(() => {
+    if (readOnlyMode || !collectionsLoaded) return;
     saveSourceModeSettings({
       collectionId: mapping.collectionId,
       sfModeIds: mapping.sfModeIds,
@@ -286,6 +392,57 @@ function App() {
     mapping.collectionId,
     mapping.sfModeIds,
     mapping.materialModeIds,
+  ]);
+
+  useEffect(() => {
+    if (readOnlyMode) {
+      setGroupPairCounts({});
+      return;
+    }
+    if (
+      !mapping.collectionId ||
+      !mapping.sfModeIds.length ||
+      !mapping.materialModeIds.length
+    ) {
+      setGroupPairCounts({});
+      return;
+    }
+    let cancelled = false;
+    const run = async () => {
+      try {
+        const allPairs = await fetchPairs({
+          collectionId: mapping.collectionId as string,
+          groupId: null,
+          sfModeIds: mapping.sfModeIds,
+          materialModeIds: mapping.materialModeIds,
+        });
+        if (cancelled) return;
+        const groups = selectedCollection?.groups ?? [];
+        const counts: Record<string, number> = {};
+        for (const group of groups) counts[group.id] = 0;
+        for (const pair of allPairs) {
+          if (!pair.descriptionFields) continue;
+          for (const group of groups) {
+            if (pairMatchesGroupFilter(pair, group.id)) {
+              counts[group.id] = (counts[group.id] ?? 0) + 1;
+            }
+          }
+        }
+        setGroupPairCounts(counts);
+      } catch {
+        if (!cancelled) setGroupPairCounts({});
+      }
+    };
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    readOnlyMode,
+    mapping.collectionId,
+    mapping.sfModeIds,
+    mapping.materialModeIds,
+    selectedCollection,
   ]);
 
   useEffect(() => {
@@ -324,12 +481,39 @@ function App() {
         modes.length > 1 ? modes.slice(1).map((m) => m.modeId) : [];
       setMapping({
         collectionId: first.id,
-        groupId: null,
+        groupId: pickGroupIdWithPreference(first, userGroupSelections[first.id]),
         sfModeIds: sfDefault,
         materialModeIds: materialDefault,
       });
     }
-  }, [readOnlyMode, collections, mapping.collectionId, setMapping]);
+  }, [readOnlyMode, collections, mapping.collectionId, setMapping, userGroupSelections]);
+
+  useEffect(() => {
+    if (readOnlyMode) return;
+    if (!selectedCollection) return;
+    const groups = selectedCollection.groups ?? [];
+    if (groups.length === 0) {
+      if (mapping.groupId !== null) setMapping({ groupId: null });
+      return;
+    }
+    const exists = Boolean(
+      mapping.groupId && groups.some((group) => group.id === mapping.groupId)
+    );
+    if (exists) return;
+    const defaultGroupId = pickGroupIdWithPreference(
+      selectedCollection,
+      userGroupSelections[selectedCollection.id]
+    );
+    if (defaultGroupId !== mapping.groupId) {
+      setMapping({ groupId: defaultGroupId });
+    }
+  }, [
+    readOnlyMode,
+    selectedCollection,
+    mapping.groupId,
+    setMapping,
+    userGroupSelections,
+  ]);
 
   const availableCollections = useMemo(
     () =>
@@ -360,7 +544,10 @@ function App() {
         modes.length > 1 ? modes.slice(1).map((m) => m.modeId) : [];
       setMapping({
         collectionId: state.collectionId,
-        groupId: null,
+        groupId: pickGroupIdWithPreference(
+          nextCollection,
+          state.collectionId ? userGroupSelections[state.collectionId] : null
+        ),
         sfModeIds: sfDefault,
         materialModeIds: materialDefault,
       });
@@ -579,7 +766,6 @@ function App() {
         <SettingsPage
           collections={availableCollections}
           collectionId={mapping.collectionId}
-          groupId={mapping.groupId}
           sfModeIds={mapping.sfModeIds}
           materialModeIds={mapping.materialModeIds}
           onChange={onChangeMapping}
@@ -609,6 +795,11 @@ function App() {
             selectionActive={readOnlyMode ? false : selectionFilterActive}
             isDevMode={isDevMode}
             readOnly={readOnlyMode}
+            groupName={selectedGroupName}
+            groups={selectedCollection?.groups ?? []}
+            groupCounts={groupPairCounts}
+            selectedGroupId={mapping.groupId}
+            onGroupChange={(groupId) => setMapping({ groupId })}
             onSearch={setPairSearch}
             searchValue={pairSearch}
             onEdit={(pair) => {
@@ -652,6 +843,7 @@ function App() {
           onSubmit={handleSubmit}
           submitting={false}
           editingPair={editingPair}
+          selectedSubgroupName={selectedSubgroupName}
           onCancelEdit={cancelEdit}
           onClose={closeCreatePage}
         />
