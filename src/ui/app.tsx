@@ -756,7 +756,6 @@ function App() {
               handleDelete(pair);
             }}
             onCreate={(initialSearch) => {
-              if (readOnlyMode) return;
               setSearchQuery(initialSearch ?? "");
               setActivePage("create");
             }}
@@ -769,10 +768,11 @@ function App() {
         </div>
       )}
 
-      {activePage === "create" && !readOnlyMode && (
+      {activePage === "create" && (
         <CreatePage
-          mappingComplete={mappingReady}
+          mappingComplete={readOnlyMode ? readOnlyReady : mappingReady}
           hasEnoughModes={hasEnoughModes}
+          readOnly={readOnlyMode}
           searchQuery={searchQuery}
           onSearchChange={setSearchQuery}
           sfResults={sfResults}

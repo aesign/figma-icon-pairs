@@ -30,6 +30,7 @@ type Props = {
   selectedSubgroupName: string | null;
   onCancelEdit: () => void;
   onClose: () => void;
+  readOnly?: boolean;
 };
 
 export function CreatePage({
@@ -53,6 +54,7 @@ export function CreatePage({
   selectedSubgroupName,
   onCancelEdit,
   onClose,
+  readOnly = false,
 }: Props) {
   const noResults =
     sfResults.length === 0 && materialResults.length === 0;
@@ -76,7 +78,7 @@ export function CreatePage({
           placeholder="Search icons..."
           value={searchQuery}
           onChange={(event) => onSearchChange(event.target.value)}
-          disabled={!mappingComplete || !hasEnoughModes}
+          disabled={!readOnly && (!mappingComplete || !hasEnoughModes)}
           ref={searchRef}
         />}
         actions={
@@ -214,21 +216,23 @@ export function CreatePage({
           </>
         )}
       </div>
-      <div className={styles.summaryRow}>
-        <Button
-          style={{ width: "100%" }}
-          onClick={onSubmit}
-          disabled={
-            submitting ||
-            !mappingComplete ||
-            !hasEnoughModes ||
-            !selectedSf ||
-            !selectedMaterial
-          }
-        >
-          {ctaLabel}
-        </Button>
-      </div>
+      {!readOnly && (
+        <div className={styles.summaryRow}>
+          <Button
+            style={{ width: "100%" }}
+            onClick={onSubmit}
+            disabled={
+              submitting ||
+              !mappingComplete ||
+              !hasEnoughModes ||
+              !selectedSf ||
+              !selectedMaterial
+            }
+          >
+            {ctaLabel}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }
