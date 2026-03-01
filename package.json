@@ -16,13 +16,13 @@
     "types:node": "tsc -P tsconfig.node.json",
     "sf:update": "node ./scripts/update-sf-json.mjs",
     "sf:update:check": "node ./scripts/update-sf-json.mjs --check",
+    "slim-material": "node ./scripts/slim-material-json.mjs",
     "build": "run-s build:*",
-    "prebuild": "run-s types clean",
+    "prebuild": "run-s slim-material types clean",
     "build:ui": "vite build -c ./vite.config.ui.ts",
     "build:plugin": "vite build -c ./vite.config.plugin.ts"
   },
   "dependencies": {
-    "@material-design-icons/svg": "^0.14.15",
     "fuse.js": "^7.1.0",
     "install": "^0.13.0",
     "material-symbols": "^0.40.2",

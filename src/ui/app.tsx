@@ -1,4 +1,3 @@
-import { filterRoundedMaterialIcons, MATERIAL_UNSUPPORTED_FAMILIES } from "@common/material";
 import {
   CreatePairRequest,
   LibraryCollectionInfo,
@@ -8,7 +7,7 @@ import {
   VariableCollectionInfo,
   VariablePair,
 } from "@common/types";
-import materialDataset from "@common/material.json";
+import materialDataset from "@common/material.slim.json";
 import sfDataset from "@common/sf.json";
 import { useMappingState } from "@ui/hooks/useMappingState";
 import { usePairs } from "@ui/hooks/usePairs";
@@ -32,7 +31,7 @@ import {
   updatePair as updatePairApi,
 } from "@ui/services/pluginApi";
 import { formatError } from "@ui/utils/errors";
-import Fuse from "fuse.js";
+import { useIconSearch } from "@ui/hooks/useIconSearch";
 import { useEffect, useMemo, useState } from "react";
 
 import "@ui/styles/main.scss";
@@ -137,13 +136,8 @@ function deriveMaterialFromPair(
     if (meta.materialName || pair.materialValue) {
       return {
         name: meta.materialName || pair.materialValue || "",
-        version: 0,
-        popularity: 0,
-        codepoint: "",
-        unsupported_families: Array.from(MATERIAL_UNSUPPORTED_FAMILIES),
         categories: meta.materialCategories ?? [],
         tags: meta.materialTags ?? [],
-        sizes_px: [],
       };
     }
   }
@@ -151,13 +145,8 @@ function deriveMaterialFromPair(
   if (pair.materialValue) {
     return {
       name: pair.materialValue,
-      version: 0,
-      popularity: 0,
-      codepoint: "",
-      unsupported_families: Array.from(MATERIAL_UNSUPPORTED_FAMILIES),
       categories: [],
       tags: [],
-      sizes_px: [],
     };
   }
 
@@ -165,14 +154,8 @@ function deriveMaterialFromPair(
 }
 
 function App() {
-  const materialIcons = useMemo<MaterialIcon[]>(
-    () => filterRoundedMaterialIcons((materialDataset as any).icons),
-    []
-  );
-  const sfSymbols = useMemo<SfSymbol[]>(
-    () => (sfDataset as any).symbols,
-    []
-  );
+  const materialIcons = materialDataset as MaterialIcon[];
+  const sfSymbols = (sfDataset as any).symbols as SfSymbol[];
 
   const { mapping, setMapping, mappingLoaded, error: mappingError } =
     useMappingState();
@@ -571,45 +554,7 @@ function App() {
     setSelectionFilterActive(false);
   };
 
-  const materialIndex = useMemo(
-    () =>
-      new Fuse(materialIcons, {
-        keys: [
-          { name: "name", weight: 0.55 },
-          { name: "categories", weight: 0.2 },
-          { name: "tags", weight: 0.25 },
-        ],
-        threshold: 0.35,
-      }),
-    [materialIcons]
-  );
-
-  const sfIndex = useMemo(
-    () =>
-      new Fuse(sfSymbols, {
-        keys: [
-          { name: "name", weight: 0.5 },
-          { name: "symbol", weight: 0.3 },
-          { name: "categories", weight: 0.1 },
-          { name: "searchTerms", weight: 0.1 },
-        ],
-        threshold: 0.35,
-      }),
-    [sfSymbols]
-  );
-
-  const sfMatches = useMemo(() => {
-    if (!searchQuery.trim()) return sfSymbols;
-    return sfIndex.search(searchQuery).map((res) => res.item);
-  }, [searchQuery, sfIndex, sfSymbols]);
-
-  const materialMatches = useMemo(() => {
-    if (!searchQuery.trim()) return materialIcons;
-    return materialIndex.search(searchQuery).map((res) => res.item);
-  }, [searchQuery, materialIcons, materialIndex]);
-
-  const sfResults = sfMatches;
-  const materialResults = materialMatches;
+  const { sfResults, materialResults } = useIconSearch(sfSymbols, materialIcons, searchQuery);
 
   const usedSfValues = useMemo(() => {
     const map = new Map<string, string>();

@@ -57,17 +57,6 @@ export function HomePage({
   const [copying, setCopying] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
   const [isFilterOpen, setIsFilterOpen] = useState(false);
-  const materialSvgs = useMemo(
-    () =>
-      import.meta.glob(
-        "../../../node_modules/@material-design-icons/svg/round/*.svg",
-        {
-          as: "raw",
-        }
-      ),
-    []
-  );
-
   const copyText = async (value: string, success: string, failure: string) => {
     if (!value) {
       await notify(failure);
@@ -106,23 +95,6 @@ export function HomePage({
 
     const ok = (await attemptNative()) || attemptLegacy();
     await notify(ok ? success : failure);
-  };
-
-  const loadMaterialSvg = async (name: string): Promise<string | null> => {
-    const key =
-      `../../../node_modules/@material-design-icons/svg/round/${name}.svg` as const;
-    const altKey =
-      `./node_modules/@material-design-icons/svg/round/${name}.svg` as const;
-    const importer =
-      (materialSvgs as Record<string, () => Promise<string>>)[key] ||
-      (materialSvgs as Record<string, () => Promise<string>>)[altKey];
-    if (!importer) return null;
-    try {
-      return await importer();
-    } catch (err) {
-      console.error("Material SVG import failed", err);
-      return null;
-    }
   };
 
   useEffect(() => {
@@ -403,24 +375,6 @@ export function HomePage({
                     pair.descriptionFields?.materialName || pair.materialValue || "",
                     "Copied Material name to clipboard",
                     "Unable to copy Material name"
-                  );
-                  setCopying(false);
-                }}
-                onMaterialGlyphClick={async () => {
-                  if (copying) return;
-                  setCopying(true);
-                  const materialName =
-                    pair.descriptionFields?.materialName || pair.materialValue || "";
-                  const svg = await loadMaterialSvg(materialName);
-                  if (!svg) {
-                    await notify("Material SVG not found");
-                    setCopying(false);
-                    return;
-                  }
-                  await copyText(
-                    String(svg),
-                    "Copied Material SVG to clipboard",
-                    "Unable to copy Material SVG"
                   );
                   setCopying(false);
                 }}

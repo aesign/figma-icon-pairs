@@ -3,6 +3,7 @@ import Fuse from "fuse.js";
 import { VariablePair } from "@common/types";
 import { fetchPairs } from "@ui/services/pluginApi";
 import { formatError } from "@ui/utils/errors";
+import { useDebounce } from "@ui/hooks/useDebounce";
 
 function buildPairSearchText(pair: VariablePair): string {
   const meta = pair.descriptionFields;
@@ -94,14 +95,17 @@ export function usePairs({
     }));
   }, [visiblePairs]);
 
+  const debouncedPairSearch = useDebounce(pairSearch, 150);
+
+  const pairFuse = useMemo(
+    () => new Fuse(buildPairCorpus, { keys: ["name", "searchText"], threshold: 0.38 }),
+    [buildPairCorpus]
+  );
+
   const filteredPairs = useMemo(() => {
-    if (!pairSearch.trim()) return buildPairCorpus;
-    const fuse = new Fuse(buildPairCorpus, {
-      keys: ["name", "searchText"],
-      threshold: 0.38,
-    });
-    return fuse.search(pairSearch).map((res) => res.item);
-  }, [pairSearch, buildPairCorpus]);
+    if (!debouncedPairSearch.trim()) return buildPairCorpus;
+    return pairFuse.search(debouncedPairSearch).map((res) => res.item);
+  }, [debouncedPairSearch, pairFuse, buildPairCorpus]);
 
   return {
     pairs,

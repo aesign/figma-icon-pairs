@@ -9,13 +9,8 @@ export type SfSymbol = {
 
 export type MaterialIcon = {
   name: string;
-  version: number;
-  popularity: number;
-  codepoint: string;
-  unsupported_families: string[];
   categories: string[];
   tags: string[];
-  sizes_px: number[];
 };
 
 export type VariableGroupInfo = {
