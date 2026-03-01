@@ -10,6 +10,7 @@ import {
 } from "@common/types";
 import materialDataset from "@common/material.json";
 import sfDataset from "@common/sf.json";
+import { DEFAULT_READONLY_LIBRARY_COLLECTION_KEY } from "@common/defaults";
 import { useMappingState } from "@ui/hooks/useMappingState";
 import { usePairs } from "@ui/hooks/usePairs";
 import { CreatePage } from "@ui/pages/CreatePage";
@@ -23,6 +24,8 @@ import {
   fetchPairs,
   loadSourceModeSettings,
   saveSourceModeSettings,
+  loadReadOnlyLibrarySelection,
+  saveReadOnlyLibrarySelection,
   loadUserGroupSelections,
   saveUserGroupSelection,
   fetchSelectionPairs,
@@ -43,7 +46,12 @@ type Page = "home" | "settings" | "create";
 function pickDefaultGroupId(
   collection: VariableCollectionInfo | null | undefined
 ): string | null {
-  const groups = collection?.groups ?? [];
+  return pickDefaultGroupIdFromGroups(collection?.groups ?? []);
+}
+
+function pickDefaultGroupIdFromGroups(
+  groups: Array<{ id: string; name: string }>
+): string | null {
   if (groups.length === 0) return null;
   const firstTopLevel = groups.find((group) => !group.id.includes("/"));
   return firstTopLevel?.id ?? groups[0].id ?? null;
@@ -83,8 +91,8 @@ function pairMatchesGroupFilter(pair: VariablePair, groupId: string): boolean {
     );
   }
 
-  // Top-level group filter matches only direct members, excluding subgroups.
-  return effectiveGroupId === groupId;
+  // Top-level filter means: all pairs except subgroup pairs.
+  return !effectiveGroupId.includes("/");
 }
 
 function deriveSfFromPair(
@@ -187,6 +195,7 @@ function App() {
   const [collectionsLoaded, setCollectionsLoaded] = useState(false);
   const [isDevMode, setIsDevMode] = useState(false);
   const [canWrite, setCanWrite] = useState(true);
+  const [isSourceFile, setIsSourceFile] = useState(false);
   const [libraryCollections, setLibraryCollections] = useState<LibraryCollectionInfo[]>(
     []
   );
@@ -202,7 +211,8 @@ function App() {
   const [groupPairCounts, setGroupPairCounts] = useState<Record<string, number>>(
     {}
   );
-  const readOnlyMode = isDevMode || !canWrite;
+  const sourceDevMode = isDevMode && isSourceFile;
+  const readOnlyMode = !sourceDevMode && (isDevMode || !canWrite);
 
   const selectedCollection = useMemo(
     () =>
@@ -283,10 +293,16 @@ function App() {
   }, [pairsError]);
 
   useEffect(() => {
-    if (mappingLoaded && collectionsLoaded && !readOnlyMode && !mappingReady) {
+    if (
+      mappingLoaded &&
+      collectionsLoaded &&
+      !readOnlyMode &&
+      !sourceDevMode &&
+      !mappingReady
+    ) {
       setActivePage("settings");
     }
-  }, [mappingLoaded, collectionsLoaded, readOnlyMode, mappingReady]);
+  }, [mappingLoaded, collectionsLoaded, readOnlyMode, sourceDevMode, mappingReady]);
 
   useEffect(() => {
     const listener = (event: MessageEvent) => {
@@ -318,7 +334,9 @@ function App() {
         const env = await fetchEnvironment();
         setCanWrite(env.canWrite);
         setIsDevMode(env.isDevMode);
-        const nextReadOnlyMode = env.isDevMode || !env.canWrite;
+        setIsSourceFile(env.isSourceFile);
+        const nextReadOnlyMode =
+          !(env.isDevMode && env.isSourceFile) && (env.isDevMode || !env.canWrite);
         if (!nextReadOnlyMode) {
           const localResult = await fetchCollections();
           setCollections(localResult);
@@ -355,12 +373,18 @@ function App() {
         } else {
           const libraryResult = await fetchLibraryCollections();
           setLibraryCollections(libraryResult);
-          if (
-            libraryResult.length === 1 &&
-            !mapping.libraryCollectionKey
-          ) {
-            setMapping({ libraryCollectionKey: libraryResult[0].key });
-          }
+          const storedLibrarySelection = await loadReadOnlyLibrarySelection();
+          const resolvedLibrarySelection =
+            storedLibrarySelection &&
+            libraryResult.some((collection) => collection.key === storedLibrarySelection)
+              ? storedLibrarySelection
+              : libraryResult.some(
+                  (collection) =>
+                    collection.key === DEFAULT_READONLY_LIBRARY_COLLECTION_KEY
+                )
+              ? DEFAULT_READONLY_LIBRARY_COLLECTION_KEY
+              : libraryResult[0]?.key ?? null;
+          setMapping({ libraryCollectionKey: resolvedLibrarySelection });
         }
         setCollectionsLoaded(true);
       } catch (err) {
@@ -368,7 +392,7 @@ function App() {
       }
     };
     loadCollections();
-  }, [mapping.libraryCollectionKey, setMapping]);
+  }, [setMapping]);
 
   useEffect(() => {
     if (readOnlyMode || !collectionsLoaded) return;
@@ -411,10 +435,26 @@ function App() {
   ]);
 
   useEffect(() => {
+    if (!readOnlyMode || !collectionsLoaded) return;
+    saveReadOnlyLibrarySelection(mapping.libraryCollectionKey ?? null).catch((err) => {
+      console.warn("Unable to save read-only library selection", err);
+    });
+  }, [readOnlyMode, collectionsLoaded, mapping.libraryCollectionKey]);
+
+  useEffect(() => {
     if (!readOnlyMode) return;
-    if (!mapping.groupId) return;
-    const exists = homeGroups.some((group) => group.id === mapping.groupId);
-    if (!exists) setMapping({ groupId: null });
+    if (homeGroups.length === 0) {
+      if (mapping.groupId !== null) setMapping({ groupId: null });
+      return;
+    }
+    const exists = Boolean(
+      mapping.groupId && homeGroups.some((group) => group.id === mapping.groupId)
+    );
+    if (exists) return;
+    const defaultGroupId = pickDefaultGroupIdFromGroups(homeGroups);
+    if (defaultGroupId !== mapping.groupId) {
+      setMapping({ groupId: defaultGroupId });
+    }
   }, [readOnlyMode, homeGroups, mapping.groupId, setMapping]);
 
   useEffect(() => {
@@ -463,7 +503,9 @@ function App() {
         }
         setGroupPairCounts(counts);
       } catch {
-        if (!cancelled) setGroupPairCounts({});
+        if (!cancelled) {
+          setGroupPairCounts({});
+        }
       }
     };
     run();
@@ -527,18 +569,17 @@ function App() {
     if (readOnlyMode) return;
     if (!selectedCollection) return;
     const groups = selectedCollection.groups ?? [];
-    if (groups.length === 0) {
-      if (mapping.groupId !== null) setMapping({ groupId: null });
+    if (groups.length === 0 && mapping.groupId !== null) {
+      setMapping({ groupId: null });
       return;
     }
+    if (groups.length === 0) return;
     const exists = Boolean(
-      mapping.groupId && groups.some((group) => group.id === mapping.groupId)
+      mapping.groupId &&
+      groups.some((group) => group.id === mapping.groupId)
     );
     if (exists) return;
-    const defaultGroupId = pickGroupIdWithPreference(
-      selectedCollection,
-      userGroupSelections[selectedCollection.id]
-    );
+    const defaultGroupId = pickDefaultGroupIdFromGroups(groups);
     if (defaultGroupId !== mapping.groupId) {
       setMapping({ groupId: defaultGroupId });
     }
@@ -678,9 +719,15 @@ function App() {
           pairMatchesGroupFilter(pair, mapping.groupId as string)
         )
       : libraryPairs;
-    if (!pairSearch.trim()) return byGroup;
+    const bySelection =
+      selectionFilterActive && selectionPairIds && selectionPairIds.length > 0
+        ? byGroup.filter((pair) => selectionPairIds.includes(pair.id))
+        : selectionFilterActive
+        ? []
+        : byGroup;
+    if (!pairSearch.trim()) return bySelection;
     const query = pairSearch.toLowerCase();
-    return byGroup.filter((pair) => {
+    return bySelection.filter((pair) => {
       const meta = pair.descriptionFields;
       const text = [
         pair.name,
@@ -694,7 +741,14 @@ function App() {
         .toLowerCase();
       return text.includes(query);
     });
-  }, [readOnlyMode, pairSearch, libraryPairs, mapping.groupId]);
+  }, [
+    readOnlyMode,
+    pairSearch,
+    libraryPairs,
+    mapping.groupId,
+    selectionFilterActive,
+    selectionPairIds,
+  ]);
 
   const resetMapping = () => {
     setPairSearch("");
@@ -802,7 +856,7 @@ function App() {
     <div className={styles.app}>
       {status ? <div className={styles.status}>{status}</div> : null}
 
-      {activePage === "settings" && !readOnlyMode && (
+      {activePage === "settings" && !sourceDevMode && (
         <SettingsPage
           collections={availableCollections}
           collectionId={mapping.collectionId}
@@ -823,6 +877,16 @@ function App() {
           onLibraryCollectionChange={(key) =>
             setMapping({ libraryCollectionKey: key })
           }
+          onRestoreDefaultLibraryCollection={() => {
+            const fallback =
+              libraryCollections.find(
+                (collection) =>
+                  collection.key === DEFAULT_READONLY_LIBRARY_COLLECTION_KEY
+              )?.key ??
+              libraryCollections[0]?.key ??
+              DEFAULT_READONLY_LIBRARY_COLLECTION_KEY;
+            setMapping({ libraryCollectionKey: fallback });
+          }}
         />
       )}
 
@@ -832,7 +896,7 @@ function App() {
             pairs={readOnlyMode ? libraryFilteredPairs : selectionFilteredPairs}
             loading={readOnlyMode ? libraryPairsLoading : pairsLoading}
             mappingComplete={readOnlyMode ? readOnlyReady : mappingReady}
-            selectionActive={readOnlyMode ? false : selectionFilterActive}
+            selectionActive={selectionFilterActive}
             isDevMode={isDevMode}
             readOnly={readOnlyMode}
             groupName={selectedGroupName}
@@ -856,9 +920,12 @@ function App() {
               setActivePage("create");
             }}
             onOpenSettings={() => {
-              if (readOnlyMode) return;
+              if (sourceDevMode) return;
               setActivePage("settings");
             }}
+            canShowMoreMenu={!isDevMode && !readOnlyMode}
+            showExportButton={sourceDevMode}
+            showSettingsButton={readOnlyMode}
             onClearSelection={clearSelectionFilter}
           />
         </div>

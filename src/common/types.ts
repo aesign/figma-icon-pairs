@@ -93,6 +93,7 @@ export type MappingState = {
 export type EnvironmentInfo = {
   isDevMode: boolean;
   canWrite: boolean;
+  isSourceFile: boolean;
 };
 
 export type SourceModeSettings = {

@@ -1,4 +1,5 @@
 import { parsePairDescription } from "@common/description";
+import { DEFAULT_READONLY_LIBRARY_COLLECTION_KEY } from "@common/defaults";
 import { PLUGIN, UI } from "@common/networkSides";
 import {
   CreatePairRequest,
@@ -18,8 +19,7 @@ const GROUP_PLUGIN_DATA_KEY = "variableGroupId";
 const PLUGIN_DATA_KEY = "ipairs"; // compact key to stay within plugin data limits
 const SOURCE_MODE_SETTINGS_PLUGIN_DATA_KEY = "ipairsSourceSettings";
 const USER_GROUP_SELECTIONS_STORAGE_KEY = "ipairsUserGroupSelections";
-const HARDCODED_LIBRARY_COLLECTION_KEY =
-  "bfa1827c219b14613541995a265ff542ea795e05";
+const READONLY_LIBRARY_SELECTION_STORAGE_KEY = "ipairsReadOnlyLibrarySelection";
 let readOnlyStartupLogged = false;
 
 const log = (...args: any[]) => {
@@ -154,6 +154,10 @@ function isDevRuntime(): boolean {
   );
 }
 
+function hasLocalSourceCollections(localCollectionsCount: number): boolean {
+  return localCollectionsCount > 0;
+}
+
 export async function isSourceWriteMode(): Promise<boolean> {
   const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
   return resolveCanWrite(localCollections.length);
@@ -179,14 +183,25 @@ async function logReadOnlyStartupSelection() {
   readOnlyStartupLogged = true;
   try {
     const collections = await listLibraryCollections();
+    const persistedRaw = await figma.clientStorage.getAsync(
+      READONLY_LIBRARY_SELECTION_STORAGE_KEY
+    );
+    const persistedLibraryCollectionKey =
+      typeof persistedRaw === "string" && persistedRaw ? persistedRaw : null;
     const selectedCollection =
       collections.find(
-        (collection) => collection.key === HARDCODED_LIBRARY_COLLECTION_KEY
-      ) ?? null;
+        (collection) => collection.key === persistedLibraryCollectionKey
+      ) ??
+      collections.find(
+        (collection) =>
+          collection.key === DEFAULT_READONLY_LIBRARY_COLLECTION_KEY
+      ) ??
+      collections[0] ??
+      null;
 
     log("readOnlyStartupSelection", {
-      persistedLibraryCollectionKey: null,
-      hardcodedLibraryCollectionKey: HARDCODED_LIBRARY_COLLECTION_KEY,
+      persistedLibraryCollectionKey,
+      defaultLibraryCollectionKey: DEFAULT_READONLY_LIBRARY_COLLECTION_KEY,
       matchedCollectionKey: selectedCollection?.key ?? null,
       matchedCollectionName: selectedCollection?.name ?? null,
       matchedLibraryName: selectedCollection?.libraryName ?? null,
@@ -284,8 +299,8 @@ function variableMatchesGroupFilter(variable: Variable, groupId: string): boolea
     );
   }
 
-  // Top-level group filter matches only direct members, excluding subgroups.
-  return effectiveGroupId === groupId;
+  // Top-level filter means: all pairs except subgroup pairs.
+  return !effectiveGroupId.includes("/");
 }
 
 function normalizeToken(value: string): string {
@@ -561,12 +576,18 @@ PLUGIN_CHANNEL.registerMessageHandler("ping", () => {
 PLUGIN_CHANNEL.registerMessageHandler("getEnvironment", async () => {
   const isDevMode = isDevRuntime();
   const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
+  const isSourceFile = localCollections.length > 0;
   const canWrite = resolveCanWrite(localCollections.length);
   if (isDevMode || !canWrite) {
     await logReadOnlyStartupSelection();
   }
-  log("getEnvironment", { editorType: figma.editorType, isDevMode, canWrite });
-  return { isDevMode, canWrite };
+  log("getEnvironment", {
+    editorType: figma.editorType,
+    isDevMode,
+    canWrite,
+    isSourceFile,
+  });
+  return { isDevMode, canWrite, isSourceFile };
 });
 
 PLUGIN_CHANNEL.registerMessageHandler("getLibraryCollections", async () => {
@@ -607,7 +628,25 @@ function extractIds(binding: any): string[] {
   return [];
 }
 
-function collectSelectionInfo(): { pairIds: string[]; selectionCount: number } {
+async function resolveSelectionPairIds(ids: Set<string>): Promise<string[]> {
+  const out = new Set<string>();
+  for (const id of ids) {
+    out.add(id);
+    if (!id.startsWith("VariableID:")) continue;
+    try {
+      const variable = await figma.variables.getVariableByIdAsync(id);
+      const key = (variable as any)?.key;
+      if (typeof key === "string" && key) {
+        out.add(`LibraryVariable:${key}`);
+      }
+    } catch (err) {
+      console.warn("Unable to resolve variable key from selection id", id, err);
+    }
+  }
+  return Array.from(out);
+}
+
+async function collectSelectionInfo(): Promise<{ pairIds: string[]; selectionCount: number }> {
   const ids = new Set<string>();
 
   const visit = (node: SceneNode) => {
@@ -684,11 +723,12 @@ function collectSelectionInfo(): { pairIds: string[]; selectionCount: number } {
     visit(node);
   }
 
-  return { pairIds: Array.from(ids), selectionCount: figma.currentPage.selection.length };
+  const pairIds = await resolveSelectionPairIds(ids);
+  return { pairIds, selectionCount: figma.currentPage.selection.length };
 }
 
-function notifySelectionPairs() {
-  const info = collectSelectionInfo();
+async function notifySelectionPairs() {
+  const info = await collectSelectionInfo();
   log(
     "selectionchange",
     `nodes=${info.selectionCount}`,
@@ -702,17 +742,19 @@ function notifySelectionPairs() {
 }
 
 export function startSelectionWatcher() {
-  figma.on("selectionchange", notifySelectionPairs);
-  notifySelectionPairs();
+  figma.on("selectionchange", () => {
+    void notifySelectionPairs();
+  });
+  void notifySelectionPairs();
 }
 
 PLUGIN_CHANNEL.registerMessageHandler("getSelectionPairs", async () => {
-  return collectSelectionInfo();
+  return await collectSelectionInfo();
 });
 
 PLUGIN_CHANNEL.registerMessageHandler("clearSelection", async () => {
   figma.currentPage.selection = [];
-  notifySelectionPairs();
+  await notifySelectionPairs();
 });
 
 PLUGIN_CHANNEL.registerMessageHandler("notify", async (message: string) => {
@@ -731,7 +773,7 @@ PLUGIN_CHANNEL.registerMessageHandler("getCollections", async () => {
 
 PLUGIN_CHANNEL.registerMessageHandler("loadSourceModeSettings", async () => {
   const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
-  if (!resolveCanWrite(localCollections.length)) return null;
+  if (!hasLocalSourceCollections(localCollections.length)) return null;
   return parseSourceModeSettings(
     figma.root.getPluginData(SOURCE_MODE_SETTINGS_PLUGIN_DATA_KEY)
   );
@@ -741,7 +783,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
   "saveSourceModeSettings",
   async (settings: SourceModeSettings) => {
     const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
-    if (!resolveCanWrite(localCollections.length)) return;
+    if (!hasLocalSourceCollections(localCollections.length)) return;
     const payload: SourceModeSettings = {
       collectionId: settings?.collectionId ?? null,
       sfModeIds: Array.isArray(settings?.sfModeIds)
@@ -760,7 +802,7 @@ PLUGIN_CHANNEL.registerMessageHandler(
 
 PLUGIN_CHANNEL.registerMessageHandler("loadUserGroupSelections", async () => {
   const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
-  if (!resolveCanWrite(localCollections.length)) return {};
+  if (!hasLocalSourceCollections(localCollections.length)) return {};
   const raw = await figma.clientStorage.getAsync(USER_GROUP_SELECTIONS_STORAGE_KEY);
   return parseUserGroupSelections(raw);
 });
@@ -769,13 +811,41 @@ PLUGIN_CHANNEL.registerMessageHandler(
   "saveUserGroupSelection",
   async (selection: UserGroupSelection) => {
     const localCollections = await figma.variables.getLocalVariableCollectionsAsync();
-    if (!resolveCanWrite(localCollections.length)) return;
+    if (!hasLocalSourceCollections(localCollections.length)) return;
     if (!selection?.collectionId) return;
 
     const raw = await figma.clientStorage.getAsync(USER_GROUP_SELECTIONS_STORAGE_KEY);
     const map = parseUserGroupSelections(raw);
     map[selection.collectionId] = selection.groupId ?? null;
     await figma.clientStorage.setAsync(USER_GROUP_SELECTIONS_STORAGE_KEY, map);
+  }
+);
+
+PLUGIN_CHANNEL.registerMessageHandler(
+  "loadReadOnlyLibrarySelection",
+  async () => {
+    const raw = await figma.clientStorage.getAsync(
+      READONLY_LIBRARY_SELECTION_STORAGE_KEY
+    );
+    if (typeof raw !== "string" || !raw) return null;
+    return raw;
+  }
+);
+
+PLUGIN_CHANNEL.registerMessageHandler(
+  "saveReadOnlyLibrarySelection",
+  async (libraryCollectionKey: string | null) => {
+    if (!libraryCollectionKey) {
+      await figma.clientStorage.setAsync(
+        READONLY_LIBRARY_SELECTION_STORAGE_KEY,
+        ""
+      );
+      return;
+    }
+    await figma.clientStorage.setAsync(
+      READONLY_LIBRARY_SELECTION_STORAGE_KEY,
+      libraryCollectionKey
+    );
   }
 );
 
@@ -804,11 +874,12 @@ PLUGIN_CHANNEL.registerMessageHandler(
 PLUGIN_CHANNEL.registerMessageHandler(
   "loadLibraryPairs",
   async (payload: LoadLibraryPairsRequest) => {
-    const effectiveLibraryCollectionKey = HARDCODED_LIBRARY_COLLECTION_KEY;
-    log("loadLibraryPairs", {
-      requestedLibraryCollectionKey: payload.libraryCollectionKey,
-      effectiveLibraryCollectionKey,
-    });
+    const effectiveLibraryCollectionKey =
+      payload.libraryCollectionKey || null;
+    log("loadLibraryPairs", { libraryCollectionKey: effectiveLibraryCollectionKey });
+    if (!effectiveLibraryCollectionKey) {
+      throw new Error("Missing library collection key.");
+    }
     const teamLibrary = (figma as any).teamLibrary;
     if (!teamLibrary?.getVariablesInLibraryCollectionAsync) {
       throw new Error("Team library API is not available in this file.");

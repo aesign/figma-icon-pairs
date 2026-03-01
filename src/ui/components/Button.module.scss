@@ -33,7 +33,7 @@
     --figma-color-border-brand-strong,
     var(--figma-color-border)
   );
-  color: var(--figma-color-text-oncolor, var(--figma-color-text));
+  color: #fff;
   &:hover:not(:disabled) {
     background: var(--figma-color-bg-brand-hover);
   }

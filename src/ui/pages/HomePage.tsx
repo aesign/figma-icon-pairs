@@ -28,6 +28,9 @@ type Props = {
   onDelete: (pair: VariablePair) => void;
   onCreate: (initialSearch?: string) => void;
   onOpenSettings: () => void;
+  canShowMoreMenu: boolean;
+  showExportButton: boolean;
+  showSettingsButton: boolean;
   onClearSelection: () => void;
 };
 
@@ -49,6 +52,9 @@ export function HomePage({
   onDelete,
   onCreate,
   onOpenSettings,
+  canShowMoreMenu,
+  showExportButton,
+  showSettingsButton,
   onClearSelection,
 }: Props) {
   const searchRef = useRef<HTMLInputElement>(null);
@@ -197,7 +203,7 @@ export function HomePage({
     ? "Search pairs in selection..."
     : selectedGroupId?.includes("/")
     ? `Search ${groupName ?? selectedGroupId} pairs...`
-    : "Search all pairs...";
+    : "Search icon pairs...";
   const addPairLabel = selectedGroupId?.includes("/")
     ? `Add pair in ${groupName ?? selectedGroupId}`
     : "Add pair";
@@ -217,7 +223,7 @@ export function HomePage({
                   icon="add"
                 />
               ) : null}
-              {!isDevMode && !readOnly ? (
+              {canShowMoreMenu ? (
                 <div className={styles.moreMenuWrap} ref={moreMenuRef}>
                   <Button
                     variant="secondary"
@@ -252,6 +258,19 @@ export function HomePage({
                     </div>
                   ) : null}
                 </div>
+              ) : showExportButton ? (
+                <Button
+                  variant="secondary"
+                  onClick={handleExport}
+                  icon="download"
+                  disabled={loading || !mappingComplete}
+                />
+              ) : showSettingsButton ? (
+                <Button
+                  variant="secondary"
+                  onClick={onOpenSettings}
+                  icon="settings"
+                />
               ) : null}
             </>
           </>
@@ -317,7 +336,7 @@ export function HomePage({
           }
           subtitle={
             readOnly
-              ? "Design system is fixed in this mode."
+              ? "Open Settings to choose the design system library."
               : isDevMode
               ? "Open the plugin in Design mode to configure collection and modes."
               : "Open Settings to pick a collection and two modes to sync pairs."

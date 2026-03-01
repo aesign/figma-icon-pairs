@@ -56,6 +56,18 @@ export async function loadUserGroupSelections(): Promise<
   return UI_CHANNEL.request(PLUGIN, "loadUserGroupSelections", []);
 }
 
+export async function loadReadOnlyLibrarySelection(): Promise<string | null> {
+  return UI_CHANNEL.request(PLUGIN, "loadReadOnlyLibrarySelection", []);
+}
+
+export async function saveReadOnlyLibrarySelection(
+  libraryCollectionKey: string | null
+): Promise<void> {
+  await UI_CHANNEL.request(PLUGIN, "saveReadOnlyLibrarySelection", [
+    libraryCollectionKey,
+  ]);
+}
+
 export async function saveUserGroupSelection(
   selection: UserGroupSelection
 ): Promise<void> {

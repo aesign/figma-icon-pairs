@@ -29,6 +29,8 @@ export const PLUGIN = Networker.createSide("Plugin-side").listens<{
   saveSourceModeSettings(settings: SourceModeSettings): Promise<void>;
   loadUserGroupSelections(): Promise<Record<string, string | null>>;
   saveUserGroupSelection(selection: UserGroupSelection): Promise<void>;
+  loadReadOnlyLibrarySelection(): Promise<string | null>;
+  saveReadOnlyLibrarySelection(libraryCollectionKey: string | null): Promise<void>;
   loadPairs(payload: LoadPairsRequest): Promise<VariablePair[]>;
   loadLibraryPairs(payload: LoadLibraryPairsRequest): Promise<VariablePair[]>;
   createPair(payload: CreatePairRequest): Promise<VariablePair>;

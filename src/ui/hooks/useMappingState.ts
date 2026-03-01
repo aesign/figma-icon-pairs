@@ -14,7 +14,7 @@ const EMPTY_MAPPING: MappingState = {
   groupId: null,
   sfModeIds: [],
   materialModeIds: [],
-  libraryCollectionKey: "bfa1827c219b14613541995a265ff542ea795e05",
+  libraryCollectionKey: null,
 };
 
 export function useMappingState(): UseMappingStateResult {

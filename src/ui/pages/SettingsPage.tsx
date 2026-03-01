@@ -26,6 +26,7 @@ type Props = {
   libraryCollections: LibraryCollectionInfo[];
   selectedLibraryCollectionKey: string | null;
   onLibraryCollectionChange: (key: string | null) => void;
+  onRestoreDefaultLibraryCollection: () => void;
 };
 
 export function SettingsPage({
@@ -46,6 +47,7 @@ export function SettingsPage({
   libraryCollections,
   selectedLibraryCollectionKey,
   onLibraryCollectionChange,
+  onRestoreDefaultLibraryCollection,
 }: Props) {
   const currentModes = selectedCollection?.modes ?? [];
   const showMappingBlocker = selectedCollection ? !hasEnoughModes : false;
@@ -93,6 +95,14 @@ export function SettingsPage({
                 </option>
               ))}
             </Select>
+            <div style={{ marginTop: 8 }}>
+              <Button
+                variant="secondary"
+                onClick={onRestoreDefaultLibraryCollection}
+              >
+                Restore Default
+              </Button>
+            </div>
           </div>
         ) : (
           <>
