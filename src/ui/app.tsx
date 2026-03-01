@@ -777,8 +777,8 @@ function App() {
           onSearchChange={setSearchQuery}
           sfResults={sfResults}
           materialResults={materialResults}
-          sfMatchesCount={sfMatches.length}
-          materialMatchesCount={materialMatches.length}
+          sfMatchesCount={sfResults.length}
+          materialMatchesCount={materialResults.length}
           usedSfValues={usedSfValues}
           usedMaterialNames={usedMaterialNames}
           selectedSf={selectedSf}
