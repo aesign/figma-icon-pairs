@@ -209,13 +209,29 @@ function App() {
       collections.find((c) => c.id === mapping.collectionId) ?? null,
     [collections, mapping.collectionId]
   );
+  const readOnlyGroups = useMemo(() => {
+    if (!readOnlyMode) return [];
+    const byId = new Map<string, { id: string; name: string }>();
+    for (const pair of libraryPairs) {
+      const effectiveGroupId = pair.groupId || deriveGroupFromPairName(pair.name || "");
+      if (!effectiveGroupId) continue;
+      const parts = effectiveGroupId.split("/").filter(Boolean);
+      for (let i = 1; i <= parts.length; i++) {
+        const id = parts.slice(0, i).join("/");
+        if (!id || byId.has(id)) continue;
+        byId.set(id, { id, name: id });
+      }
+    }
+    return Array.from(byId.values());
+  }, [readOnlyMode, libraryPairs]);
+  const homeGroups = useMemo(
+    () => (readOnlyMode ? readOnlyGroups : selectedCollection?.groups ?? []),
+    [readOnlyMode, readOnlyGroups, selectedCollection]
+  );
   const selectedGroupName = useMemo(() => {
-    if (!selectedCollection || !mapping.groupId) return null;
-    return (
-      selectedCollection.groups.find((group) => group.id === mapping.groupId)
-        ?.name ?? mapping.groupId
-    );
-  }, [selectedCollection, mapping.groupId]);
+    if (!mapping.groupId) return null;
+    return homeGroups.find((group) => group.id === mapping.groupId)?.name ?? mapping.groupId;
+  }, [homeGroups, mapping.groupId]);
   const selectedSubgroupName = useMemo(() => {
     if (!mapping.groupId?.includes("/")) return null;
     const name = selectedGroupName ?? mapping.groupId;
@@ -395,8 +411,25 @@ function App() {
   ]);
 
   useEffect(() => {
+    if (!readOnlyMode) return;
+    if (!mapping.groupId) return;
+    const exists = homeGroups.some((group) => group.id === mapping.groupId);
+    if (!exists) setMapping({ groupId: null });
+  }, [readOnlyMode, homeGroups, mapping.groupId, setMapping]);
+
+  useEffect(() => {
     if (readOnlyMode) {
-      setGroupPairCounts({});
+      const counts: Record<string, number> = {};
+      for (const group of homeGroups) counts[group.id] = 0;
+      for (const pair of libraryPairs) {
+        if (!pair.descriptionFields) continue;
+        for (const group of homeGroups) {
+          if (pairMatchesGroupFilter(pair, group.id)) {
+            counts[group.id] = (counts[group.id] ?? 0) + 1;
+          }
+        }
+      }
+      setGroupPairCounts(counts);
       return;
     }
     if (
@@ -439,6 +472,8 @@ function App() {
     };
   }, [
     readOnlyMode,
+    libraryPairs,
+    homeGroups,
     mapping.collectionId,
     mapping.sfModeIds,
     mapping.materialModeIds,
@@ -638,9 +673,14 @@ function App() {
 
   const libraryFilteredPairs = useMemo(() => {
     if (!readOnlyMode) return [];
-    if (!pairSearch.trim()) return libraryPairs;
+    const byGroup = mapping.groupId
+      ? libraryPairs.filter((pair) =>
+          pairMatchesGroupFilter(pair, mapping.groupId as string)
+        )
+      : libraryPairs;
+    if (!pairSearch.trim()) return byGroup;
     const query = pairSearch.toLowerCase();
-    return libraryPairs.filter((pair) => {
+    return byGroup.filter((pair) => {
       const meta = pair.descriptionFields;
       const text = [
         pair.name,
@@ -654,7 +694,7 @@ function App() {
         .toLowerCase();
       return text.includes(query);
     });
-  }, [readOnlyMode, pairSearch, libraryPairs]);
+  }, [readOnlyMode, pairSearch, libraryPairs, mapping.groupId]);
 
   const resetMapping = () => {
     setPairSearch("");
@@ -796,7 +836,7 @@ function App() {
             isDevMode={isDevMode}
             readOnly={readOnlyMode}
             groupName={selectedGroupName}
-            groups={selectedCollection?.groups ?? []}
+            groups={homeGroups}
             groupCounts={groupPairCounts}
             selectedGroupId={mapping.groupId}
             onGroupChange={(groupId) => setMapping({ groupId })}

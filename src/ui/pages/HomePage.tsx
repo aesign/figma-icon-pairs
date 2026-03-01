@@ -265,45 +265,43 @@ export function HomePage({
             disabled={!mappingComplete}
             ref={searchRef}
           />
-          {!readOnly ? (
-            <div className={styles.filterMenuWrap} ref={filterMenuRef}>
-              <Button
-                variant="secondary"
-                onClick={() => setIsFilterOpen((prev) => !prev)}
-                icon="filter_list"
-                aria-expanded={isFilterOpen}
-                aria-haspopup="menu"
-                disabled={!mappingComplete || groups.length === 0}
-                className={classes(
-                  selectedGroupId?.includes("/") && styles.filterButtonActive,
-                  selectedGroupId?.includes("/") && styles.filterButtonNestedActive
-                )}
-              />
-              {isFilterOpen ? (
-                <div className={styles.moreMenu} role="menu">
-                  {groups.map((group) => (
-                    <button
-                      key={group.id}
-                      type="button"
-                      className={classes(
-                        styles.moreMenuItem,
-                        selectedGroupId === group.id && styles.moreMenuItemActive
-                      )}
-                      onClick={() => {
-                        setIsFilterOpen(false);
-                        onGroupChange(group.id);
-                      }}
-                    >
-                      <span>{group.name}</span>
-                      <span className={styles.moreMenuCount}>
-                        {groupCounts[group.id] ?? 0}
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+          <div className={styles.filterMenuWrap} ref={filterMenuRef}>
+            <Button
+              variant="secondary"
+              onClick={() => setIsFilterOpen((prev) => !prev)}
+              icon="filter_list"
+              aria-expanded={isFilterOpen}
+              aria-haspopup="menu"
+              disabled={!mappingComplete || groups.length === 0}
+              className={classes(
+                selectedGroupId?.includes("/") && styles.filterButtonActive,
+                selectedGroupId?.includes("/") && styles.filterButtonNestedActive
+              )}
+            />
+            {isFilterOpen ? (
+              <div className={styles.moreMenu} role="menu">
+                {groups.map((group) => (
+                  <button
+                    key={group.id}
+                    type="button"
+                    className={classes(
+                      styles.moreMenuItem,
+                      selectedGroupId === group.id && styles.moreMenuItemActive
+                    )}
+                    onClick={() => {
+                      setIsFilterOpen(false);
+                      onGroupChange(group.id);
+                    }}
+                  >
+                    <span>{group.name}</span>
+                    <span className={styles.moreMenuCount}>
+                      {groupCounts[group.id] ?? 0}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            ) : null}
+          </div>
         </div>
       </SectionHeader>
       {loading ? (
